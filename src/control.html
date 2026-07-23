@@ -20,7 +20,7 @@
   .dot.on { background:var(--ok); }
   .preview { width:100%; border-radius:6px; border:1px solid var(--edge); background:#000; display:block; aspect-ratio:16/9; object-fit:contain; margin-bottom:10px; }
   label { display:block; font-size:11px; color:var(--mut); margin:8px 0 3px; }
-  input[type=text],input[type=number] { width:100%; padding:7px 9px; background:#0b0b0f; border:1px solid var(--edge); border-radius:6px; color:var(--fg); font-size:13px; }
+  input[type=text],input[type=number],select { width:100%; padding:7px 9px; background:#0b0b0f; border:1px solid var(--edge); border-radius:6px; color:var(--fg); font-size:13px; }
   .row { display:flex; gap:8px; } .row>*{ flex:1; }
   button { padding:7px 11px; background:#2a2a34; color:var(--fg); border:1px solid var(--edge); border-radius:6px; cursor:pointer; font-size:12px; }
   button:hover { background:#33333f; }
@@ -69,9 +69,19 @@ function buildCard(ch) {
     <input type="text" class="f_url">
     <div class="btns"><button class="primary" data-a="url">Set URL</button><button data-a="reload">Reload</button></div>
     <div class="row" style="margin-top:8px">
-      <div><label>Width</label><input type="number" class="f_w"></div>
-      <div><label>Height</label><input type="number" class="f_h"></div>
-      <div><label>FPS</label><input type="number" class="f_fps"></div>
+      <div><label>Resolution</label><select class="f_res">
+        <option value="1280x720">720p (1280×720)</option>
+        <option value="1920x1080">1080p (1920×1080)</option>
+        <option value="2560x1440">1440p (2560×1440)</option>
+        <option value="3840x2160">4K (3840×2160)</option>
+      </select></div>
+      <div><label>Frame rate</label><select class="f_fps">
+        <option value="24">24 fps</option>
+        <option value="25">25 fps</option>
+        <option value="30">30 fps</option>
+        <option value="50">50 fps</option>
+        <option value="60">60 fps</option>
+      </select></div>
     </div>
     <label>NDI name</label><input type="text" class="f_name">
     <div class="chk"><input type="checkbox" class="f_alpha"><label style="margin:0">Alpha (fill+key)</label></div>
@@ -82,8 +92,9 @@ function buildCard(ch) {
   c.querySelector('[data-a="url"]').onclick = async () => { await post('channels/'+id+'/url', {url: val('.f_url')}); msg.textContent='URL set.'; };
   c.querySelector('[data-a="reload"]').onclick = async () => { await post('channels/'+id+'/reload'); msg.textContent='reloaded.'; };
   c.querySelector('[data-a="config"]').onclick = async () => {
+    const [w, h] = c.querySelector('.f_res').value.split('x').map(Number);
     msg.textContent='restarting…';
-    await post('channels/'+id, { width:+val('.f_w'), height:+val('.f_h'), fps:+val('.f_fps'), name:val('.f_name'), alpha:c.querySelector('.f_alpha').checked });
+    await post('channels/'+id, { width:w, height:h, fps:+c.querySelector('.f_fps').value, name:val('.f_name'), alpha:c.querySelector('.f_alpha').checked });
     msg.textContent='applied.';
   };
   c.querySelector('[data-a="delete"]').onclick = async () => { if (confirm('Delete '+id+'?')) { await post('channels/'+id+'/delete'); c.remove(); } };
@@ -95,9 +106,8 @@ function updateCard(c, ch) {
   c.querySelector('.sub').textContent = ch.width + '×' + ch.height + '@' + ch.fps + '  ·  actual ' + ch.fpsActual + ' fps  ·  ' + (ch.alpha?'alpha':'opaque');
   const a = document.activeElement, has = s => c.contains(a) && a.classList.contains(s.slice(1));
   if (!has('.f_url'))  c.querySelector('.f_url').value = ch.url;
-  if (!has('.f_w'))    c.querySelector('.f_w').value = ch.width;
-  if (!has('.f_h'))    c.querySelector('.f_h').value = ch.height;
-  if (!has('.f_fps'))  c.querySelector('.f_fps').value = ch.fps;
+  if (!has('.f_res'))  setSelect(c.querySelector('.f_res'), ch.width + 'x' + ch.height, ch.width + '×' + ch.height + ' (custom)');
+  if (!has('.f_fps'))  setSelect(c.querySelector('.f_fps'), String(ch.fps), ch.fps + ' fps (custom)');
   if (!has('.f_name')) c.querySelector('.f_name').value = ch.name;
   if (a !== c.querySelector('.f_alpha')) c.querySelector('.f_alpha').checked = ch.alpha;
   c.querySelector('.preview').src = 'preview.jpg?id=' + ch.id + '&t=' + Date.now();
@@ -105,6 +115,12 @@ function updateCard(c, ch) {
 async function post(path, body) {
   const r = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{}) });
   return r.ok;
+}
+function setSelect(sel, value, customLabel) {
+  if (![...sel.options].some(o => o.value === value)) {
+    const o = document.createElement('option'); o.value = value; o.textContent = customLabel || value; sel.appendChild(o);
+  }
+  sel.value = value;
 }
 async function addChannel() {
   const url = prompt('Page URL for the new channel:', 'https://example.com');
