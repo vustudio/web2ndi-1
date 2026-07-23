@@ -1,0 +1,9 @@
+{
+  "name": "webcg-ndi",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Headless web page -> NDI output. Standalone, GPU-accelerated recreation of the Sienna NDIPE CG Engine node.",
+  "main": "src/main.js",
+  "scripts": { "start": "electron . --no-sandbox" },
+  "dependencies": { "electron": "^33.2.0" }
+}
