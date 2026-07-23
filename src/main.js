@@ -71,22 +71,39 @@ function sanitize(patch) {
 let channels = [];
 const RT = {}; // runtime state keyed by channel id
 
-// JS run in each page to pull player status (id / licensed / connected) from the DOM.
-const SCRAPE_JS = `(() => {
+// JS run in each page to read player identity. The durable id lives in IndexedDB
+// (playerId/playerName) once paired, and appears as ?id= in the URL; before pairing
+// the unlicensed id is shown on-screen. Returns a Promise (executeJavaScript awaits it).
+const SCRAPE_JS = `(async () => {
   try {
     const t = ((document.body && document.body.innerText) || '').replace(/\\s+/g, ' ').trim();
-    const title = document.title || '';
-    let licensed = null, playerId = null, playerName = null;
-    let m = t.match(/Unlicen[cs]ed Player[:\\s]*([A-Za-z0-9]{4,12})/i);
-    if (m) { licensed = false; playerId = m[1]; }
-    else {
-      const nm = title.match(/Web Player\\s*[-–]\\s*(.+)$/i) || t.match(/Web Player\\s*[-–]\\s*([A-Za-z0-9 _.-]{1,30})/i);
-      if (nm) { licensed = true; playerName = nm[1].trim(); }
-    }
-    const connected = /No User Connected/i.test(t) ? false : (/User Connected|Connected/i.test(t) ? true : null);
-    const idx = t.search(/Player/i);
-    const ctx = idx >= 0 ? t.slice(Math.max(0, idx - 24), idx + 44) : '';
-    return { playerId, playerName, licensed, connected, title, ctx };
+    const connected = /No User Connected/i.test(t) ? false : (/User Connected/i.test(t) ? true : null);
+    let onscreenId = null;
+    const u = t.match(/Unlicen[cs]ed Player[:\\s]*([A-Za-z0-9]{4,12})/i);
+    if (u) onscreenId = u[1];
+    let urlId = null;
+    try { urlId = new URLSearchParams(location.search).get('id'); } catch (e) {}
+    const idb = {};
+    try {
+      const dbs = indexedDB.databases ? await indexedDB.databases() : [];
+      for (const info of dbs) {
+        const db = await new Promise((res, rej) => { const r = indexedDB.open(info.name); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+        for (const sn of Array.from(db.objectStoreNames)) {
+          try {
+            await new Promise((res) => {
+              const store = db.transaction(sn, 'readonly').objectStore(sn);
+              const want = ['playerId', 'playerName']; let pend = want.length;
+              want.forEach(k => { const g = store.get(k); g.onsuccess = () => { let v = g.result; if (v && typeof v === 'object' && 'value' in v) v = v.value; if (v !== undefined && idb[k] === undefined) idb[k] = v; if (--pend === 0) res(); }; g.onerror = () => { if (--pend === 0) res(); }; });
+            });
+          } catch (e) {}
+        }
+        db.close();
+      }
+    } catch (e) {}
+    const licensed = !!(idb.playerId || urlId);
+    const playerId = idb.playerId || urlId || onscreenId || null;
+    const playerName = idb.playerName || null;
+    return { playerId, playerName, licensed, connected, title: document.title };
   } catch (e) { return { error: String(e) }; }
 })()`;
 

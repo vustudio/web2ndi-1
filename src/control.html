@@ -123,17 +123,15 @@ function updateCard(c, ch) {
   c.querySelector('.sub').textContent = ch.width + '×' + ch.height + '@' + ch.fps + '  ·  actual ' + ch.fpsActual + ' fps  ·  ' + (ch.alpha?'alpha':'opaque');
   const p = ch.page || {}, ps = c.querySelector('.pstat');
   if (p.playerId) {
-    const badge = p.licensed === false ? '<span class="badge unlic">Unlicensed</span>'
-                : p.licensed === true  ? '<span class="badge lic">Licensed</span>' : '';
-    ps.innerHTML = badge + '<span class="pidwrap">Player</span> <span class="pid" title="click to copy">' + p.playerId + '</span>';
+    const badge = p.licensed ? '<span class="badge lic">Licensed</span>' : '<span class="badge unlic">Unlicensed</span>';
+    const nm = p.playerName ? '<span class="pidwrap">' + p.playerName + '</span>' : '';
+    ps.innerHTML = badge + nm + '<span class="pid" title="click to copy">' + p.playerId + '</span>';
     const pid = ps.querySelector('.pid');
     pid.onclick = () => { const v = p.playerId;
-      const done = () => { const o = pid.textContent; pid.textContent = 'copied'; setTimeout(() => pid.textContent = v, 800); };
+      const done = () => { pid.textContent = 'copied'; setTimeout(() => pid.textContent = v, 800); };
       if (navigator.clipboard) navigator.clipboard.writeText(v).then(done).catch(() => {});
       else { const ta = document.createElement('textarea'); ta.value = v; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (e) {} ta.remove(); }
     };
-  } else if (p.playerName) {
-    ps.innerHTML = '<span class="badge lic">Licensed</span> <span class="pidwrap">Player</span> <span class="pid">' + p.playerName + '</span>';
   } else if (p.connected === true) { ps.innerHTML = '<span class="badge lic">Connected</span>'; }
   else { ps.innerHTML = ''; }
   const a = document.activeElement, has = s => c.contains(a) && a.classList.contains(s.slice(1));
