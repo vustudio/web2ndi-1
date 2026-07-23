@@ -71,6 +71,25 @@ function sanitize(patch) {
 let channels = [];
 const RT = {}; // runtime state keyed by channel id
 
+// JS run in each page to pull player status (id / licensed / connected) from the DOM.
+const SCRAPE_JS = `(() => {
+  try {
+    const t = ((document.body && document.body.innerText) || '').replace(/\\s+/g, ' ').trim();
+    const title = document.title || '';
+    let licensed = null, playerId = null, playerName = null;
+    let m = t.match(/Unlicen[cs]ed Player[:\\s]*([A-Za-z0-9]{4,12})/i);
+    if (m) { licensed = false; playerId = m[1]; }
+    else {
+      const nm = title.match(/Web Player\\s*[-–]\\s*(.+)$/i) || t.match(/Web Player\\s*[-–]\\s*([A-Za-z0-9 _.-]{1,30})/i);
+      if (nm) { licensed = true; playerName = nm[1].trim(); }
+    }
+    const connected = /No User Connected/i.test(t) ? false : (/User Connected|Connected/i.test(t) ? true : null);
+    const idx = t.search(/Player/i);
+    const ctx = idx >= 0 ? t.slice(Math.max(0, idx - 24), idx + 44) : '';
+    return { playerId, playerName, licensed, connected, title, ctx };
+  } catch (e) { return { error: String(e) }; }
+})()`;
+
 // ---- container CPU / mem (cgroup) + GPU (nvidia-smi) sampling -------------
 let sysStats = { cpuPercent: 0, cores: os.cpus().length, memMB: 0, gpus: [] };
 function readCpuUsec() {
@@ -146,6 +165,12 @@ function startChannel(ch) {
     }
     if (!rt.sender.stdin.write(bmp)) rt.backed = true;
   });
+  // Periodically scrape player status (id / licensed / connected) from the DOM.
+  rt.scrapeTick = setInterval(() => {
+    if (!win || win.isDestroyed() || win.webContents.isLoading()) return;
+    win.webContents.executeJavaScript(SCRAPE_JS, true).then(r => { rt.page = r; }).catch(() => {});
+  }, 3000);
+
   win.webContents.on('render-process-gone', (_e, d) => { console.error(`[${ch.id}] render gone: ${d.reason}`); if (win && !win.isDestroyed()) win.reload(); });
   win.webContents.on('did-fail-load', (_e, code, desc) => { console.error(`[${ch.id}] load failed ${code} ${desc}`); setTimeout(() => { if (win && !win.isDestroyed()) win.loadURL(ch.url); }, 2000); });
   win.loadURL(ch.url);
@@ -154,6 +179,7 @@ function stopChannel(id) {
   const rt = RT[id]; if (!rt) return; rt.stopping = true;
   if (rt.tick) clearInterval(rt.tick);
   if (rt.fpsTick) clearInterval(rt.fpsTick);
+  if (rt.scrapeTick) clearInterval(rt.scrapeTick);
   if (rt.sender) { try { rt.sender.kill('SIGKILL'); } catch (e) {} }
   if (rt.win) { try { rt.win.destroy(); } catch (e) {} }
   delete RT[id];
@@ -203,7 +229,7 @@ function startControlServer() {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           gl: GL, machineName: os.hostname().toUpperCase(), system: sysStats,
-          channels: channels.map(c => { const rt = RT[c.id] || {}; return { ...c, fpsActual: rt.fpsActual || 0, connected: !!(rt.sender && rt.win) }; }),
+          channels: channels.map(c => { const rt = RT[c.id] || {}; return { ...c, fpsActual: rt.fpsActual || 0, connected: !!(rt.sender && rt.win), page: rt.page || null }; }),
         }));
         return;
       }
