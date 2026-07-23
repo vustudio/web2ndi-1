@@ -20,6 +20,10 @@ const CFG = {
   ctrlPort: parseInt(process.env.CTRL_PORT || '8099', 10),
 };
 
+// Persist cookies / localStorage / session across container restarts.
+// Mount a volume at /data (or set CG_DATA_DIR) so the profile survives recreation.
+try { app.setPath('userData', process.env.CG_DATA_DIR || '/data'); } catch (e) {}
+
 app.commandLine.appendSwitch('no-sandbox');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('disable-frame-rate-limit');

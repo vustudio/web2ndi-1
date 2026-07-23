@@ -33,5 +33,8 @@ ENV NVIDIA_VISIBLE_DEVICES=all \
     CG_WIDTH=1920 CG_HEIGHT=1080 CG_FPS=30 NDI_NAME=WebCG CG_ALPHA=1 CG_GL=egl \
     CTRL_PORT=8099
 
+# Persistent Electron profile (cookies / localStorage / session). Mount a volume here.
+VOLUME /data
+
 EXPOSE 8099
 ENTRYPOINT ["./entrypoint.sh"]

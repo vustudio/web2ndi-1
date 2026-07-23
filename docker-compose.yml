@@ -21,6 +21,8 @@ services:
       # server (unicast :5959) so the source is reliably seen:
       # NDI_DISCOVERY_SERVER: "10.201.10.10"
       # NDI_GROUP: "public"
+    volumes:
+      - webcg-data:/data       # persistent Electron profile (session/cookies survive restarts)
     deploy:
       resources:
         reservations:
@@ -29,3 +31,6 @@ services:
               count: all
               capabilities: [gpu]
     restart: unless-stopped
+
+volumes:
+  webcg-data:
