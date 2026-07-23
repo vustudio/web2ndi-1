@@ -103,16 +103,25 @@ const SCRAPE_JS = `(async () => {
     // The on-screen "Unlicensed Player" text is authoritative — a leftover playerId
     // in IndexedDB does NOT mean the player is currently licensed.
     const unlicensedScreen = /Unlicen[cs]ed Player/i.test(t);
-    let licensed, playerId, playerName;
-    if (unlicensedScreen) {
-      licensed = false;
-      playerId = onscreenId || null;          // the current pending id shown on screen
-      playerName = null;
-    } else {
-      playerName = idb.playerName || null;
-      playerId = idb.playerId || urlId || null;
-      licensed = !!(playerName || playerId);
+    // Blocking error screen, e.g. "Player Already Active" (id claimed in another browser)
+    let blocked = null;
+    if (/Player Already Active/i.test(t)) {
+      const bi = t.search(/Player Already Active/i);
+      const im = t.match(/This player ID \\(([A-Za-z0-9._-]{3,16})\\)/i);
+      blocked = { title: 'Player Already Active', id: im ? im[1] : null, msg: t.slice(bi, bi + 240).trim() };
     }
+    // A genuinely paired player has a NAME in IndexedDB. An id on its own can be a
+    // pending/stale value (e.g. while the splash screen is still connecting), so it
+    // must NOT be treated as licensed.
+    let licensed = false, playerId = null, playerName = idb.playerName || null;
+    if (blocked)                 { playerId = blocked.id || idb.playerId || null; playerName = null; }
+    else if (unlicensedScreen)   { playerId = onscreenId || null; playerName = null; }
+    else if (playerName)         { licensed = true; playerId = idb.playerId || urlId || null; }
+    else                         { playerId = idb.playerId || urlId || null; }  // connecting / pending
+    const actions = [];
+    try { for (const e of document.querySelectorAll('button,a,[role=button]')) { const x = (e.innerText || '').trim(); if (x && x.length < 40 && actions.length < 8) actions.push(x); } } catch (e) {}
+    const state = blocked ? 'blocked' : (unlicensedScreen ? 'unlicensed' : (licensed ? 'licensed' : 'connecting'));
+    const origin = location.origin;
     let perf = null;
     try {
       const v = document.querySelector('video');
@@ -124,7 +133,7 @@ const SCRAPE_JS = `(async () => {
         perf = { vw: v.videoWidth, vh: v.videoHeight, ct: +(v.currentTime || 0).toFixed(1), paused: v.paused, readyState: v.readyState, dropped: q.droppedVideoFrames || 0, total: q.totalVideoFrames || 0, diag };
       } else { perf = { diag }; }
     } catch (e) {}
-    return { playerId, playerName, licensed, connected, title: document.title, perf };
+    return { playerId, playerName, licensed, connected, state, origin, blocked, actions, title: document.title, perf };
   } catch (e) { return { error: String(e) }; }
 })()`;
 
@@ -287,6 +296,19 @@ function startControlServer() {
         if (action === 'delete') { removeChannel(id); res.writeHead(200); res.end('ok'); return; }
         if (action === 'reload') { const rt = RT[id]; if (rt && rt.win && !rt.win.isDestroyed()) rt.win.reload(); res.writeHead(200); res.end('ok'); return; }
         if (action === 'url') { const b = await readBody(req); patchChannel(id, { url: b.url }); res.writeHead(200); res.end('ok'); return; }
+        if (action === 'click') {   // click a button on the page by its label (e.g. "Retry Connection")
+          const b = await readBody(req);
+          const label = String(b.label || '').toLowerCase();
+          const rt = RT[id];
+          let ok = false;
+          if (rt && rt.win && !rt.win.isDestroyed() && label) {
+            const js = `(() => { const els=[...document.querySelectorAll('button,a,[role=button]')];`
+              + ` const el=els.find(e=>((e.innerText||'').trim().toLowerCase()).includes(${JSON.stringify(label)}));`
+              + ` if(el){el.click(); return true;} return false; })()`;
+            try { ok = await rt.win.webContents.executeJavaScript(js, true); } catch (e) {}
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ clicked: !!ok })); return;
+        }
         // default: config patch
         const b = await readBody(req); patchChannel(id, b); res.writeHead(200); res.end('ok'); return;
       }

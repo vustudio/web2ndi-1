@@ -22,12 +22,18 @@
   .dot { width:9px; height:9px; border-radius:50%; background:var(--warn); flex:0 0 auto; }
   .dot.on { background:var(--ok); }
   .pstat { margin:2px 0 10px; display:flex; align-items:center; gap:8px; min-height:26px; flex-wrap:wrap; }
-  .badge { font-size:11px; padding:2px 9px; border-radius:12px; }
+  .badge { font-size:11px; padding:2px 9px; border-radius:12px; background:#22222c; color:var(--mut); border:1px solid var(--edge); }
   .badge.unlic { background:#3a2a10; color:#fb0; border:1px solid #740; }
   .badge.lic { background:#10331f; color:#5e9; border:1px solid #363; }
   .pidwrap { font-size:12px; color:var(--mut); }
   .pid { font-size:19px; font-weight:700; letter-spacing:1.5px; color:#fff; user-select:all; cursor:pointer; padding:1px 6px; border-radius:5px; background:#0b0b0f; border:1px solid var(--edge); }
   .pid:hover { border-color:var(--accent); }
+  .badge.err { background:#3a1414; color:#f77; border:1px solid #833; }
+  .plink { margin:-4px 0 10px; font-size:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .plink a { color:var(--accent); text-decoration:none; }
+  .plink a:hover { text-decoration:underline; }
+  .errmsg { color:#f99; font-size:11px; }
+  button.mini { padding:3px 8px; font-size:11px; }
   .preview { width:100%; border-radius:6px; border:1px solid var(--edge); background:#000; display:block; aspect-ratio:16/9; object-fit:contain; margin-bottom:10px; }
   label { display:block; font-size:11px; color:var(--mut); margin:8px 0 3px; }
   input[type=text],input[type=number],select { width:100%; padding:7px 9px; background:#0b0b0f; border:1px solid var(--edge); border-radius:6px; color:var(--fg); font-size:13px; }
@@ -81,6 +87,7 @@ function buildCard(ch) {
     <h2><span class="dot"></span> <span class="nm"></span> <span style="color:var(--mut);font-weight:400">(${ch.id})</span></h2>
     <div class="sub"></div>
     <div class="pstat"></div>
+    <div class="plink"></div>
     <img class="preview" alt="preview">
     <label>Source URL (live)</label>
     <input type="text" class="f_url">
@@ -91,6 +98,7 @@ function buildCard(ch) {
         <option value="1920x1080">1080p (1920×1080)</option>
         <option value="2560x1440">1440p (2560×1440)</option>
         <option value="3840x2160">4K (3840×2160)</option>
+        <option value="custom">Custom…</option>
       </select></div>
       <div><label>Frame rate</label><select class="f_fps">
         <option value="24">24 fps</option>
@@ -100,6 +108,10 @@ function buildCard(ch) {
         <option value="60">60 fps</option>
       </select></div>
     </div>
+    <div class="customres row" style="display:none; margin-top:6px">
+      <div><label>Custom width</label><input type="number" class="f_cw" min="16" max="7680" step="2"></div>
+      <div><label>Custom height</label><input type="number" class="f_ch" min="16" max="4320" step="2"></div>
+    </div>
     <label>NDI name</label><input type="text" class="f_name">
     <div class="chk"><input type="checkbox" class="f_alpha"><label style="margin:0">Alpha (fill+key)</label></div>
     <div class="btns"><button class="primary" data-a="config">Apply &amp; restart</button><button class="danger" data-a="delete">Delete</button></div>
@@ -108,9 +120,14 @@ function buildCard(ch) {
   const val = s => c.querySelector(s).value;
   c.querySelector('[data-a="url"]').onclick = async () => { await post('channels/'+id+'/url', {url: val('.f_url')}); msg.textContent='URL set.'; };
   c.querySelector('[data-a="reload"]').onclick = async () => { await post('channels/'+id+'/reload'); msg.textContent='reloaded.'; };
+  const resSel = c.querySelector('.f_res'), crow = c.querySelector('.customres');
+  resSel.onchange = () => { crow.style.display = resSel.value === 'custom' ? '' : 'none'; };
   c.querySelector('[data-a="config"]').onclick = async () => {
-    const [w, h] = c.querySelector('.f_res').value.split('x').map(Number);
-    msg.textContent='restarting…';
+    let w, h;
+    if (resSel.value === 'custom') { w = +c.querySelector('.f_cw').value; h = +c.querySelector('.f_ch').value; }
+    else { [w, h] = resSel.value.split('x').map(Number); }
+    if (!w || !h || w < 16 || h < 16) { msg.className='err'; msg.textContent='enter a valid custom size'; return; }
+    msg.className=''; msg.textContent='restarting…';
     await post('channels/'+id, { width:w, height:h, fps:+c.querySelector('.f_fps').value, name:val('.f_name'), alpha:c.querySelector('.f_alpha').checked });
     msg.textContent='applied.';
   };
@@ -121,22 +138,49 @@ function updateCard(c, ch) {
   c.querySelector('.dot').classList.toggle('on', ch.connected);
   c.querySelector('.nm').textContent = ch.name;
   c.querySelector('.sub').textContent = ch.width + '×' + ch.height + '@' + ch.fps + '  ·  actual ' + ch.fpsActual + ' fps  ·  ' + (ch.alpha?'alpha':'opaque');
-  const p = ch.page || {}, ps = c.querySelector('.pstat');
-  if (p.playerId) {
-    const badge = p.licensed ? '<span class="badge lic">Licensed</span>' : '<span class="badge unlic">Unlicensed</span>';
-    const nm = p.playerName ? '<span class="pidwrap">' + p.playerName + '</span>' : '';
-    ps.innerHTML = badge + nm + '<span class="pid" title="click to copy">' + p.playerId + '</span>';
-    const pid = ps.querySelector('.pid');
-    pid.onclick = () => { const v = p.playerId;
-      const done = () => { pid.textContent = 'copied'; setTimeout(() => pid.textContent = v, 800); };
-      if (navigator.clipboard) navigator.clipboard.writeText(v).then(done).catch(() => {});
-      else { const ta = document.createElement('textarea'); ta.value = v; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (e) {} ta.remove(); }
-    };
-  } else if (p.connected === true) { ps.innerHTML = '<span class="badge lic">Connected</span>'; }
-  else { ps.innerHTML = ''; }
+  const p = ch.page || {}, ps = c.querySelector('.pstat'), pl = c.querySelector('.plink');
+  let origin = p.origin || '';
+  if (!origin) { try { origin = new URL(ch.url).origin; } catch (e) { origin = ''; } }
+  const st = p.state;
+  if (st === 'blocked') {
+    const bid = (p.blocked && p.blocked.id) || p.playerId || '';
+    ps.innerHTML = '<span class="badge err">Blocked</span><span class="pidwrap">' + ((p.blocked && p.blocked.title) || 'Error') + '</span>'
+                 + (bid ? '<span class="pid" title="click to copy">' + bid + '</span>' : '');
+    pl.innerHTML = '<span class="errmsg">ID already in use in another browser</span>'
+                 + '<button class="mini" data-c="retry connection">Retry connection</button>'
+                 + '<button class="mini" data-c="start as unlicensed">Start as unlicensed</button>';
+  } else if (st === 'licensed' && p.playerId) {
+    const url = origin + '/library?id=' + encodeURIComponent(p.playerId);
+    ps.innerHTML = '<span class="badge lic">Licensed</span>' + (p.playerName ? '<span class="pidwrap">' + p.playerName + '</span>' : '')
+                 + '<span class="pid" title="click to copy">' + p.playerId + '</span>';
+    pl.innerHTML = '<a href="' + url + '" target="_blank" rel="noreferrer">Open library →</a><button class="mini" data-copy="' + url + '">copy link</button>';
+  } else if (st === 'unlicensed' && p.playerId) {
+    const url = origin + '/player-admin/setup/' + encodeURIComponent(p.playerId);
+    ps.innerHTML = '<span class="badge unlic">Unlicensed</span><span class="pidwrap">Player</span>'
+                 + '<span class="pid" title="click to copy">' + p.playerId + '</span>';
+    pl.innerHTML = '<a href="' + url + '" target="_blank" rel="noreferrer">Register player →</a><button class="mini" data-copy="' + url + '">copy link</button>';
+  } else if (st === 'connecting') {
+    ps.innerHTML = '<span class="badge">Connecting…</span>'
+                 + (p.playerId ? '<span class="pidwrap">pending</span><span class="pid" title="click to copy">' + p.playerId + '</span>' : '');
+    pl.innerHTML = '<span class="errmsg" style="color:var(--mut)">not paired yet — waiting for the player to connect</span>';
+  } else { ps.innerHTML = ''; pl.innerHTML = ''; }
+  const pidEl = ps.querySelector('.pid');
+  if (pidEl) pidEl.onclick = () => copyText(pidEl.textContent, pidEl);
+  pl.querySelectorAll('[data-copy]').forEach(b => { b.onclick = () => copyText(b.dataset.copy, b, 'copy link'); });
+  pl.querySelectorAll('[data-c]').forEach(b => { b.onclick = async () => {
+    const o = b.textContent; b.textContent = '…';
+    const r = await fetch('channels/' + ch.id + '/click', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ label: b.dataset.c }) });
+    let j = {}; try { j = await r.json(); } catch (e) {}
+    b.textContent = j.clicked ? 'clicked' : 'not found'; setTimeout(() => b.textContent = o, 1200);
+  }; });
   const a = document.activeElement, has = s => c.contains(a) && a.classList.contains(s.slice(1));
   if (!has('.f_url'))  c.querySelector('.f_url').value = ch.url;
-  if (!has('.f_res'))  setSelect(c.querySelector('.f_res'), ch.width + 'x' + ch.height, ch.width + '×' + ch.height + ' (custom)');
+  const rs = c.querySelector('.f_res');
+  if (rs.value !== 'custom') {           // leave the picker alone while a custom size is being entered
+    if (!has('.f_res')) setSelect(rs, ch.width + 'x' + ch.height, ch.width + '×' + ch.height + ' (custom)');
+    if (!has('.f_cw')) c.querySelector('.f_cw').value = ch.width;
+    if (!has('.f_ch')) c.querySelector('.f_ch').value = ch.height;
+  }
   if (!has('.f_fps'))  setSelect(c.querySelector('.f_fps'), String(ch.fps), ch.fps + ' fps (custom)');
   if (!has('.f_name')) c.querySelector('.f_name').value = ch.name;
   if (a !== c.querySelector('.f_alpha')) c.querySelector('.f_alpha').checked = ch.alpha;
@@ -145,6 +189,12 @@ function updateCard(c, ch) {
 async function post(path, body) {
   const r = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{}) });
   return r.ok;
+}
+function copyText(v, el, restore) {
+  const orig = restore || v;
+  const done = () => { el.textContent = 'copied'; setTimeout(() => el.textContent = orig, 900); };
+  if (navigator.clipboard) navigator.clipboard.writeText(v).then(done).catch(() => {});
+  else { const ta = document.createElement('textarea'); ta.value = v; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (e) {} ta.remove(); }
 }
 function setSelect(sel, value, customLabel) {
   if (![...sel.options].some(o => o.value === value)) {
