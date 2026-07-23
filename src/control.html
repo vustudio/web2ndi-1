@@ -5,130 +5,116 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>webcg-ndi control</title>
 <style>
-  :root { --bg:#111; --panel:#1c1c22; --edge:#333; --fg:#ddd; --mut:#888; --accent:#66f; --ok:#0c7; --warn:#e74; }
+  :root { --bg:#0e0e12; --panel:#1c1c22; --edge:#333; --fg:#ddd; --mut:#888; --accent:#66f; --ok:#0c7; --warn:#e74; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui,Segoe UI,Roboto,sans-serif; }
-  header { padding:14px 20px; background:#0c0c0f; border-bottom:1px solid var(--edge); display:flex; align-items:center; gap:12px; }
+  header { padding:14px 20px; background:#08080b; border-bottom:1px solid var(--edge); display:flex; align-items:center; gap:12px; position:sticky; top:0; z-index:5; }
   header h1 { font-size:16px; margin:0; font-weight:600; letter-spacing:.5px; }
-  .dot { width:10px; height:10px; border-radius:50%; background:var(--warn); }
+  header .meta { color:var(--mut); font-size:12px; }
+  header button { margin-left:auto; }
+  main { max-width:1200px; margin:0 auto; padding:20px; display:grid; gap:18px; grid-template-columns:repeat(auto-fill,minmax(380px,1fr)); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:14px; }
+  .card h2 { font-size:13px; margin:0 0 4px; display:flex; align-items:center; gap:8px; }
+  .card .sub { color:var(--mut); font-size:11px; margin-bottom:10px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--warn); flex:0 0 auto; }
   .dot.on { background:var(--ok); }
-  main { max-width:900px; margin:0 auto; padding:20px; display:grid; gap:18px; grid-template-columns:1fr 1fr; }
-  .card { background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:16px; }
-  .card.full { grid-column:1 / -1; }
-  .card h2 { font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--mut); margin:0 0 12px; }
-  label { display:block; font-size:12px; color:var(--mut); margin:10px 0 4px; }
-  input[type=text], input[type=number], select {
-    width:100%; padding:8px 10px; background:#0e0e12; border:1px solid var(--edge);
-    border-radius:6px; color:var(--fg); font-size:14px;
-  }
-  .row { display:flex; gap:10px; }
-  .row > * { flex:1; }
-  button { padding:9px 14px; background:#2a2a34; color:var(--fg); border:1px solid var(--edge);
-    border-radius:6px; cursor:pointer; font-size:13px; }
+  .preview { width:100%; border-radius:6px; border:1px solid var(--edge); background:#000; display:block; aspect-ratio:16/9; object-fit:contain; margin-bottom:10px; }
+  label { display:block; font-size:11px; color:var(--mut); margin:8px 0 3px; }
+  input[type=text],input[type=number] { width:100%; padding:7px 9px; background:#0b0b0f; border:1px solid var(--edge); border-radius:6px; color:var(--fg); font-size:13px; }
+  .row { display:flex; gap:8px; } .row>*{ flex:1; }
+  button { padding:7px 11px; background:#2a2a34; color:var(--fg); border:1px solid var(--edge); border-radius:6px; cursor:pointer; font-size:12px; }
   button:hover { background:#33333f; }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
-  button.primary:hover { filter:brightness(1.1); }
-  .btns { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
-  .kv { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #262630; }
-  .kv:last-child { border:0; }
-  .kv span:first-child { color:var(--mut); }
-  .preview { grid-column:1 / -1; }
-  .preview img { width:100%; border-radius:6px; border:1px solid var(--edge); background:#000; display:block; }
-  .chk { display:flex; align-items:center; gap:8px; margin-top:14px; }
-  .chk input { width:auto; }
-  #msg { min-height:18px; font-size:12px; color:var(--ok); margin-top:8px; }
-  #msg.err { color:var(--warn); }
+  button.danger { background:#3a2020; border-color:#663; color:#e99; }
+  .btns { display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; }
+  .chk { display:flex; align-items:center; gap:7px; margin-top:10px; } .chk input{ width:auto; }
+  .msg { min-height:15px; font-size:11px; color:var(--ok); margin-top:6px; }
 </style>
 </head>
 <body>
 <header>
-  <div class="dot" id="dot"></div>
   <h1>webcg-ndi</h1>
-  <span id="ndiname" style="color:var(--mut)"></span>
+  <span class="meta" id="meta"></span>
+  <button class="primary" onclick="addChannel()">+ Add channel</button>
 </header>
-<main>
-  <div class="card full preview">
-    <h2>Live preview</h2>
-    <img id="preview" alt="preview" src="preview.jpg">
-  </div>
+<main id="grid"></main>
 
-  <div class="card">
-    <h2>Source URL (live)</h2>
-    <label>Page URL</label>
-    <input type="text" id="url" placeholder="https://…">
-    <div class="btns">
-      <button class="primary" onclick="setUrl()">Set URL</button>
-      <button onclick="reload()">Reload page</button>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Status</h2>
-    <div class="kv"><span>NDI name</span><span id="s_ndi">–</span></div>
-    <div class="kv"><span>Resolution</span><span id="s_res">–</span></div>
-    <div class="kv"><span>Target FPS</span><span id="s_fps">–</span></div>
-    <div class="kv"><span>Actual FPS</span><span id="s_afps">–</span></div>
-    <div class="kv"><span>Alpha</span><span id="s_alpha">–</span></div>
-    <div class="kv"><span>GL mode</span><span id="s_gl">–</span></div>
-  </div>
-
-  <div class="card full">
-    <h2>Output settings (applies with a quick restart)</h2>
-    <div class="row">
-      <div><label>Width</label><input type="number" id="w" min="16" max="7680"></div>
-      <div><label>Height</label><input type="number" id="h" min="16" max="4320"></div>
-      <div><label>FPS</label><input type="number" id="fps" min="1" max="60"></div>
-    </div>
-    <div class="row" style="margin-top:6px">
-      <div><label>NDI name</label><input type="text" id="ndi"></div>
-    </div>
-    <div class="chk"><input type="checkbox" id="alpha"><label style="margin:0">Alpha (fill+key / BGRA)</label></div>
-    <div class="btns"><button class="primary" onclick="applyConfig()">Apply &amp; restart</button></div>
-    <div id="msg"></div>
-  </div>
-</main>
 <script>
-  async function getStatus() {
-    try {
-      const s = await (await fetch('status')).json();
-      document.getElementById('dot').classList.toggle('on', s.connected);
-      document.getElementById('ndiname').textContent = s.machineName + ' (' + s.ndiName + ')';
-      document.getElementById('s_ndi').textContent = s.ndiName;
-      document.getElementById('s_res').textContent = s.width + '×' + s.height;
-      document.getElementById('s_fps').textContent = s.fps;
-      document.getElementById('s_afps').textContent = s.fpsActual;
-      document.getElementById('s_alpha').textContent = s.alpha ? 'on' : 'off';
-      document.getElementById('s_gl').textContent = s.gl;
-      // only fill inputs if not focused (don't clobber typing)
-      const a = document.activeElement;
-      if (a.id !== 'url')   document.getElementById('url').value = s.url;
-      if (a.id !== 'w')     document.getElementById('w').value = s.width;
-      if (a.id !== 'h')     document.getElementById('h').value = s.height;
-      if (a.id !== 'fps')   document.getElementById('fps').value = s.fps;
-      if (a.id !== 'ndi')   document.getElementById('ndi').value = s.ndiName;
-      if (a.id !== 'alpha') document.getElementById('alpha').checked = s.alpha;
-    } catch (e) {}
+let statusCache = [];
+async function refresh() {
+  try {
+    const s = await (await fetch('status')).json();
+    document.getElementById('meta').textContent = s.machineName + '  ·  gl=' + s.gl + '  ·  ' + s.channels.length + ' channel(s)';
+    statusCache = s.channels;
+    render(s);
+  } catch (e) {}
+}
+function render(s) {
+  const grid = document.getElementById('grid');
+  // remove cards for deleted channels
+  [...grid.children].forEach(c => { if (!s.channels.find(ch => ch.id === c.dataset.id)) c.remove(); });
+  for (const ch of s.channels) {
+    let card = grid.querySelector('[data-id="' + ch.id + '"]');
+    if (!card) { card = buildCard(ch); grid.appendChild(card); }
+    updateCard(card, ch);
   }
-  function msg(t, err) { const m=document.getElementById('msg'); m.textContent=t; m.className=err?'err':''; }
-  async function post(path, body) {
-    const r = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body||{})});
-    return r.ok;
-  }
-  async function setUrl()  { msg((await post('url',{url:document.getElementById('url').value})) ? 'URL set.' : 'failed', false); }
-  async function reload()  { await post('reload'); msg('reloaded.'); }
-  async function applyConfig() {
-    const body = {
-      width:  +document.getElementById('w').value,
-      height: +document.getElementById('h').value,
-      fps:    +document.getElementById('fps').value,
-      ndiName: document.getElementById('ndi').value,
-      alpha:  document.getElementById('alpha').checked,
-    };
-    msg('restarting…');
-    msg((await post('config', body)) ? 'applied — restarting render/NDI.' : 'failed', false);
-  }
-  setInterval(getStatus, 2000); getStatus();
-  setInterval(() => { document.getElementById('preview').src = 'preview.jpg?t=' + Date.now(); }, 1500);
+}
+function buildCard(ch) {
+  const c = document.createElement('div'); c.className = 'card'; c.dataset.id = ch.id;
+  c.innerHTML = `
+    <h2><span class="dot"></span> <span class="nm"></span> <span style="color:var(--mut);font-weight:400">(${ch.id})</span></h2>
+    <div class="sub"></div>
+    <img class="preview" alt="preview">
+    <label>Source URL (live)</label>
+    <input type="text" class="f_url">
+    <div class="btns"><button class="primary" data-a="url">Set URL</button><button data-a="reload">Reload</button></div>
+    <div class="row" style="margin-top:8px">
+      <div><label>Width</label><input type="number" class="f_w"></div>
+      <div><label>Height</label><input type="number" class="f_h"></div>
+      <div><label>FPS</label><input type="number" class="f_fps"></div>
+    </div>
+    <label>NDI name</label><input type="text" class="f_name">
+    <div class="chk"><input type="checkbox" class="f_alpha"><label style="margin:0">Alpha (fill+key)</label></div>
+    <div class="btns"><button class="primary" data-a="config">Apply &amp; restart</button><button class="danger" data-a="delete">Delete</button></div>
+    <div class="msg"></div>`;
+  const id = ch.id, msg = c.querySelector('.msg');
+  const val = s => c.querySelector(s).value;
+  c.querySelector('[data-a="url"]').onclick = async () => { await post('channels/'+id+'/url', {url: val('.f_url')}); msg.textContent='URL set.'; };
+  c.querySelector('[data-a="reload"]').onclick = async () => { await post('channels/'+id+'/reload'); msg.textContent='reloaded.'; };
+  c.querySelector('[data-a="config"]').onclick = async () => {
+    msg.textContent='restarting…';
+    await post('channels/'+id, { width:+val('.f_w'), height:+val('.f_h'), fps:+val('.f_fps'), name:val('.f_name'), alpha:c.querySelector('.f_alpha').checked });
+    msg.textContent='applied.';
+  };
+  c.querySelector('[data-a="delete"]').onclick = async () => { if (confirm('Delete '+id+'?')) { await post('channels/'+id+'/delete'); c.remove(); } };
+  return c;
+}
+function updateCard(c, ch) {
+  c.querySelector('.dot').classList.toggle('on', ch.connected);
+  c.querySelector('.nm').textContent = ch.name;
+  c.querySelector('.sub').textContent = ch.width + '×' + ch.height + '@' + ch.fps + '  ·  actual ' + ch.fpsActual + ' fps  ·  ' + (ch.alpha?'alpha':'opaque');
+  const a = document.activeElement, has = s => c.contains(a) && a.classList.contains(s.slice(1));
+  if (!has('.f_url'))  c.querySelector('.f_url').value = ch.url;
+  if (!has('.f_w'))    c.querySelector('.f_w').value = ch.width;
+  if (!has('.f_h'))    c.querySelector('.f_h').value = ch.height;
+  if (!has('.f_fps'))  c.querySelector('.f_fps').value = ch.fps;
+  if (!has('.f_name')) c.querySelector('.f_name').value = ch.name;
+  if (a !== c.querySelector('.f_alpha')) c.querySelector('.f_alpha').checked = ch.alpha;
+  c.querySelector('.preview').src = 'preview.jpg?id=' + ch.id + '&t=' + Date.now();
+}
+async function post(path, body) {
+  const r = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{}) });
+  return r.ok;
+}
+async function addChannel() {
+  const url = prompt('Page URL for the new channel:', 'https://example.com');
+  if (!url) return;
+  const name = prompt('NDI name:', 'WebCG-' + (statusCache.length + 1));
+  if (!name) return;
+  await post('channels', { url, name, width:1920, height:1080, fps:30, alpha:true });
+  refresh();
+}
+setInterval(refresh, 2000); refresh();
 </script>
 </body>
 </html>
