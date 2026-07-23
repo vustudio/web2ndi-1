@@ -81,6 +81,8 @@ POST /config  {"width","height","fps","ndiName","alpha"}  → apply + restart
 | `NDI_NAME` | WebCG | NDI source name |
 | `CG_ALPHA` | 1 | 1 = BGRA fill+key, 0 = opaque BGRX |
 | `CG_GL` | egl | `egl` = NVIDIA GPU, `swiftshader` = software |
+| `CG_XVFB` | 1 | `0` = headless, no Xvfb — **required for GPU** (Xvfb forces software GLX). Keep `1` for software mode. |
+| `CG_EXTRA_ARGS` | (unset) | extra Chromium CLI flags, e.g. `--use-angle=vulkan` |
 | `NDI_DISCOVERY_SERVER` | (unset) | discovery server IP(s) — see below |
 | `NDI_GROUP` | public | NDI send group (must match what receivers listen on) |
 | `CTRL_PORT` | 8099 | web control panel port (`http://<host>:8099/`) |

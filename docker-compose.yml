@@ -14,6 +14,7 @@ services:
       NDI_NAME: "WebCG"
       CG_ALPHA: "1"
       CG_GL: "egl"              # set to 'swiftshader' on a host with no GPU
+      CG_XVFB: "0"              # GPU mode: run headless (no Xvfb) so Chromium uses NVIDIA EGL, not software GLX
       CTRL_PORT: "8099"         # web control panel: http://<host>:8099/
       # NDI discovery: leave unset to use mDNS (fine when this is the only NDI app
       # on the host). On a host already running NDI apps, point at a discovery

@@ -27,8 +27,17 @@ app.commandLine.appendSwitch('disable-dev-shm-usage');
 if (CFG.gl === 'swiftshader') {
   app.disableHardwareAcceleration();
 } else {
+  // GPU (NVIDIA EGL). Headless ozone avoids the software GLX path taken under Xvfb.
+  app.commandLine.appendSwitch('ozone-platform', 'headless');
   app.commandLine.appendSwitch('use-gl', 'angle');
   app.commandLine.appendSwitch('use-angle', 'gl-egl');
+  app.commandLine.appendSwitch('enable-gpu-rasterization');
+}
+// Experimental override, e.g. CG_CHROME_FLAGS="use-angle=vulkan enable-features=Vulkan"
+for (const f of (process.env.CG_CHROME_FLAGS || '').split(/\s+/).filter(Boolean)) {
+  const i = f.indexOf('=');
+  if (i > 0) app.commandLine.appendSwitch(f.slice(0, i).replace(/^--/, ''), f.slice(i + 1));
+  else app.commandLine.appendSwitch(f.replace(/^--/, ''));
 }
 
 let sender = null, win = null, backed = false, headerSent = false, restarting = false;
@@ -158,7 +167,14 @@ function startControlServer() {
 // actual-fps counter
 setInterval(() => { fpsActual = paints; paints = 0; }, 1000);
 
-app.whenReady().then(() => { startSender(); setTimeout(createWindow, 300); startControlServer(); });
+app.whenReady().then(async () => {
+  try {
+    const gi = await app.getGPUInfo('complete');
+    const a = gi.auxAttributes || {};
+    console.log(`[gpu] renderer="${a.glRenderer || '?'}" vendor="${a.glVendor || '?'}" glVersion="${a.glVersion || '?'}"`);
+  } catch (e) { console.log('[gpu] info unavailable:', e.message); }
+  startSender(); setTimeout(createWindow, 300); startControlServer();
+});
 app.on('window-all-closed', () => { if (!restarting) app.quit(); });
 process.on('SIGTERM', () => app.quit());
 process.on('SIGINT',  () => app.quit());
