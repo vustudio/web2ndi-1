@@ -100,10 +100,31 @@ const SCRAPE_JS = `(async () => {
         db.close();
       }
     } catch (e) {}
-    const licensed = !!(idb.playerId || urlId);
-    const playerId = idb.playerId || urlId || onscreenId || null;
-    const playerName = idb.playerName || null;
-    return { playerId, playerName, licensed, connected, title: document.title };
+    // The on-screen "Unlicensed Player" text is authoritative — a leftover playerId
+    // in IndexedDB does NOT mean the player is currently licensed.
+    const unlicensedScreen = /Unlicen[cs]ed Player/i.test(t);
+    let licensed, playerId, playerName;
+    if (unlicensedScreen) {
+      licensed = false;
+      playerId = onscreenId || null;          // the current pending id shown on screen
+      playerName = null;
+    } else {
+      playerName = idb.playerName || null;
+      playerId = idb.playerId || urlId || null;
+      licensed = !!(playerName || playerId);
+    }
+    let perf = null;
+    try {
+      const v = document.querySelector('video');
+      let diag = null;
+      const dr = localStorage.getItem('playerDiagnostics');
+      if (dr) { try { const a = JSON.parse(dr); diag = a[a.length - 1]; } catch (e) {} }
+      if (v) {
+        const q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : {};
+        perf = { vw: v.videoWidth, vh: v.videoHeight, ct: +(v.currentTime || 0).toFixed(1), paused: v.paused, readyState: v.readyState, dropped: q.droppedVideoFrames || 0, total: q.totalVideoFrames || 0, diag };
+      } else { perf = { diag }; }
+    } catch (e) {}
+    return { playerId, playerName, licensed, connected, title: document.title, perf };
   } catch (e) { return { error: String(e) }; }
 })()`;
 
@@ -243,10 +264,16 @@ function startControlServer() {
         return;
       }
       if (req.method === 'GET' && pathname === '/status') {
+        const metrics = {}; try { for (const m of app.getAppMetrics()) metrics[m.pid] = m; } catch (e) {}
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           gl: GL, machineName: os.hostname().toUpperCase(), system: sysStats,
-          channels: channels.map(c => { const rt = RT[c.id] || {}; return { ...c, fpsActual: rt.fpsActual || 0, connected: !!(rt.sender && rt.win), page: rt.page || null }; }),
+          channels: channels.map(c => {
+            const rt = RT[c.id] || {};
+            let cpu = null, memMB = null;
+            try { const pid = rt.win && !rt.win.isDestroyed() ? rt.win.webContents.getOSProcessId() : 0; const m = metrics[pid]; if (m) { cpu = Math.round(m.cpu.percentCPUUsage); memMB = Math.round((m.memory.workingSetSize || 0) / 1024); } } catch (e) {}
+            return { ...c, fpsActual: rt.fpsActual || 0, connected: !!(rt.sender && rt.win), page: rt.page || null, cpu, memMB };
+          }),
         }));
         return;
       }
