@@ -4,7 +4,7 @@
 // its own NDI output via a dedicated sender.py. Channels are configured/persisted
 // in /data/channels.json and managed from one HTTP control panel.
 const { app, BrowserWindow } = require('electron');
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
 const http = require('http');
 const os = require('os');
 const path = require('path');
@@ -70,6 +70,41 @@ function sanitize(patch) {
 
 let channels = [];
 const RT = {}; // runtime state keyed by channel id
+
+// ---- container CPU / mem (cgroup) + GPU (nvidia-smi) sampling -------------
+let sysStats = { cpuPercent: 0, cores: os.cpus().length, memMB: 0, gpus: [] };
+function readCpuUsec() {
+  try { const m = fs.readFileSync('/sys/fs/cgroup/cpu.stat', 'utf8').match(/usage_usec\s+(\d+)/); if (m) return +m[1]; } catch (e) {}
+  try { return Math.round(+fs.readFileSync('/sys/fs/cgroup/cpuacct/cpuacct.usage', 'utf8').trim() / 1000); } catch (e) {}
+  return null;
+}
+function readMemMB() {
+  for (const p of ['/sys/fs/cgroup/memory.current', '/sys/fs/cgroup/memory/memory.usage_in_bytes']) {
+    try { return Math.round(+fs.readFileSync(p, 'utf8').trim() / 1048576); } catch (e) {}
+  }
+  return 0;
+}
+let _lastCpu = { usec: readCpuUsec(), t: Date.now() };
+setInterval(() => {
+  const usec = readCpuUsec(), t = Date.now();
+  if (usec != null && _lastCpu.usec != null) {
+    const dt = (t - _lastCpu.t) * 1000; // -> usec
+    if (dt > 0) sysStats.cpuPercent = Math.round((usec - _lastCpu.usec) / dt * 100);
+  }
+  _lastCpu = { usec, t };
+  sysStats.memMB = readMemMB();
+}, 2000);
+function pollGpu() {
+  exec('nvidia-smi --query-gpu=index,utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits',
+    { timeout: 4000 }, (err, out) => {
+      if (!err && out) sysStats.gpus = out.trim().split('\n').map(l => {
+        const [i, u, mu, mt] = l.split(',').map(x => x.trim());
+        return { index: +i, util: +u, memUsed: +mu, memTotal: +mt };
+      });
+      setTimeout(pollGpu, 3000);
+    });
+}
+pollGpu();
 
 // ---- per-channel sender + offscreen window --------------------------------
 function startChannel(ch) {
@@ -167,7 +202,7 @@ function startControlServer() {
       if (req.method === 'GET' && pathname === '/status') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
-          gl: GL, machineName: os.hostname().toUpperCase(),
+          gl: GL, machineName: os.hostname().toUpperCase(), system: sysStats,
           channels: channels.map(c => { const rt = RT[c.id] || {}; return { ...c, fpsActual: rt.fpsActual || 0, connected: !!(rt.sender && rt.win) }; }),
         }));
         return;

@@ -12,6 +12,9 @@
   header h1 { font-size:16px; margin:0; font-weight:600; letter-spacing:.5px; }
   header .meta { color:var(--mut); font-size:12px; }
   header button { margin-left:auto; }
+  .stats { display:flex; gap:7px; margin-left:16px; flex-wrap:wrap; }
+  .pill { background:#161620; border:1px solid var(--edge); border-radius:20px; padding:3px 10px; font-size:12px; white-space:nowrap; }
+  .pill b { color:var(--accent); }
   main { max-width:1200px; margin:0 auto; padding:20px; display:grid; gap:18px; grid-template-columns:repeat(auto-fill,minmax(380px,1fr)); }
   .card { background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:14px; }
   .card h2 { font-size:13px; margin:0 0 4px; display:flex; align-items:center; gap:8px; }
@@ -35,6 +38,7 @@
 <header>
   <h1>webcg-ndi</h1>
   <span class="meta" id="meta"></span>
+  <span class="stats" id="sys"></span>
   <button class="primary" onclick="addChannel()">+ Add channel</button>
 </header>
 <main id="grid"></main>
@@ -45,6 +49,11 @@ async function refresh() {
   try {
     const s = await (await fetch('status')).json();
     document.getElementById('meta').textContent = s.machineName + '  ·  gl=' + s.gl + '  ·  ' + s.channels.length + ' channel(s)';
+    const sy = s.system || {}, pills = [];
+    pills.push(`<span class="pill">CPU <b>${sy.cpuPercent || 0}%</b> (~${((sy.cpuPercent || 0) / 100).toFixed(1)} cores)</span>`);
+    pills.push(`<span class="pill">MEM <b>${sy.memMB || 0}</b> MB</span>`);
+    for (const g of (sy.gpus || [])) pills.push(`<span class="pill">GPU${g.index} <b>${g.util}%</b> ${(g.memUsed / 1024).toFixed(1)}/${(g.memTotal / 1024).toFixed(0)}GB</span>`);
+    document.getElementById('sys').innerHTML = pills.join('');
     statusCache = s.channels;
     render(s);
   } catch (e) {}
