@@ -8,14 +8,14 @@
   :root { --bg:#0e0e12; --panel:#1c1c22; --edge:#333; --fg:#ddd; --mut:#888; --accent:#66f; --ok:#0c7; --warn:#e74; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui,Segoe UI,Roboto,sans-serif; }
-  header { padding:14px 20px; background:#08080b; border-bottom:1px solid var(--edge); display:flex; align-items:center; gap:12px; position:sticky; top:0; z-index:5; }
+  header { padding:14px 20px; background:#08080b; border-bottom:1px solid var(--edge); display:flex; align-items:center; gap:12px; flex-wrap:wrap; position:sticky; top:0; z-index:5; }
   header h1 { font-size:16px; margin:0; font-weight:600; letter-spacing:.5px; }
   header .meta { color:var(--mut); font-size:12px; }
   header button { margin-left:auto; }
   .stats { display:flex; gap:7px; margin-left:16px; flex-wrap:wrap; }
   .pill { background:#161620; border:1px solid var(--edge); border-radius:20px; padding:3px 10px; font-size:12px; white-space:nowrap; }
   .pill b { color:var(--accent); }
-  main { max-width:1200px; margin:0 auto; padding:20px; display:grid; gap:18px; grid-template-columns:repeat(auto-fill,minmax(380px,1fr)); }
+  main { max-width:1200px; margin:0 auto; padding:20px; display:grid; gap:18px; grid-template-columns:repeat(auto-fill,minmax(min(100%,380px),1fr)); }
   .card { background:var(--panel); border:1px solid var(--edge); border-radius:8px; padding:14px; }
   .card h2 { font-size:13px; margin:0 0 4px; display:flex; align-items:center; gap:8px; }
   .card .sub { color:var(--mut); font-size:11px; margin-bottom:10px; }
@@ -34,10 +34,34 @@
   .plink a:hover { text-decoration:underline; }
   .errmsg { color:#f99; font-size:11px; }
   button.mini { padding:3px 8px; font-size:11px; }
+
+  /* ---- responsive ------------------------------------------------------ */
+  /* Tablet / small laptop: give the stats their own full-width row so the
+     title and the Add-channel button keep the top line to themselves. */
+  @media (max-width: 900px) {
+    header { padding:10px 12px; gap:8px; position:static; }   /* not sticky: a wrapped header would eat the viewport */
+    header .meta { font-size:11px; }
+    .stats { flex-basis:100%; margin-left:0; order:3;
+             flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; }
+    .stats::-webkit-scrollbar { height:0; }
+    main { padding:12px; gap:12px; }
+  }
+  /* Phone */
+  @media (max-width: 520px) {
+    header h1 { font-size:15px; }
+    header .meta { flex-basis:100%; order:2; }                /* meta on its own line */
+    header button { margin-left:auto; padding:7px 10px; font-size:12px; }
+    .pill { font-size:11px; padding:2px 8px; }
+    main { padding:10px; gap:10px; }
+    .card { padding:12px; }
+    .pid { font-size:17px; letter-spacing:1px; }
+    .btns { gap:5px; } .btns button { flex:1 1 auto; }
+    .plink { font-size:11px; }
+  }
   .preview { width:100%; border-radius:6px; border:1px solid var(--edge); background:#000; display:block; aspect-ratio:16/9; object-fit:contain; margin-bottom:10px; }
   label { display:block; font-size:11px; color:var(--mut); margin:8px 0 3px; }
   input[type=text],input[type=number],select { width:100%; padding:7px 9px; background:#0b0b0f; border:1px solid var(--edge); border-radius:6px; color:var(--fg); font-size:13px; }
-  .row { display:flex; gap:8px; } .row>*{ flex:1; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; } .row>*{ flex:1 1 130px; min-width:0; }
   button { padding:7px 11px; background:#2a2a34; color:var(--fg); border:1px solid var(--edge); border-radius:6px; cursor:pointer; font-size:12px; }
   button:hover { background:#33333f; }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
