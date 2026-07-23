@@ -66,6 +66,10 @@ async function refresh() {
     pills.push(`<span class="pill">CPU <b>${sy.cpuPercent || 0}%</b> (~${((sy.cpuPercent || 0) / 100).toFixed(1)} cores)</span>`);
     pills.push(`<span class="pill">MEM <b>${sy.memMB || 0}</b> MB</span>`);
     for (const g of (sy.gpus || [])) pills.push(`<span class="pill">GPU${g.index} <b>${g.util}%</b> ${(g.memUsed / 1024).toFixed(1)}/${(g.memTotal / 1024).toFixed(0)}GB</span>`);
+    const net = sy.net || {}, ndiT = sy.ndiTotalMbps || 0, pct = ndiT / 10000 * 100;
+    pills.push(`<span class="pill" style="border-color:${pct>70?'#e74':'#333'}">NDI out <b>${ndiT}</b> Mbps · ${pct.toFixed(1)}% of 10G</span>`);
+    const topIf = (net.ifaces || [])[0];
+    pills.push(`<span class="pill">NIC${topIf ? ' ' + topIf.name : ''} ↑ <b>${(net.txMbps || 0).toFixed(0)}</b> ↓ ${(net.rxMbps || 0).toFixed(0)} Mbps</span>`);
     document.getElementById('sys').innerHTML = pills.join('');
     statusCache = s.channels;
     render(s);
@@ -137,7 +141,12 @@ function buildCard(ch) {
 function updateCard(c, ch) {
   c.querySelector('.dot').classList.toggle('on', ch.connected);
   c.querySelector('.nm').textContent = ch.name;
-  c.querySelector('.sub').textContent = ch.width + '×' + ch.height + '@' + ch.fps + '  ·  actual ' + ch.fpsActual + ' fps  ·  ' + (ch.alpha?'alpha':'opaque');
+  const recv = (ch.conn === null || ch.conn === undefined) ? '?' : ch.conn;
+  const bw = (ch.conn > 0)
+    ? `${recv} receiver${ch.conn === 1 ? '' : 's'} · ≈${ch.ndiPerStreamMbps} Mbps ea → ${ch.ndiOutMbps} Mbps`
+    : `${recv} receivers · 0 Mbps (idle, ≈${ch.ndiPerStreamMbps} Mbps if watched)`;
+  c.querySelector('.sub').innerHTML = ch.width + '×' + ch.height + '@' + ch.fps + '  ·  actual ' + ch.fpsActual + ' fps  ·  ' + (ch.alpha?'alpha':'opaque')
+    + '<br><span style="color:' + (ch.conn > 0 ? 'var(--accent)' : 'var(--mut)') + '">NDI: ' + bw + '</span>';
   const p = ch.page || {}, ps = c.querySelector('.pstat'), pl = c.querySelector('.plink');
   let origin = p.origin || '';
   if (!origin) { try { origin = new URL(ch.url).origin; } catch (e) { origin = ''; } }

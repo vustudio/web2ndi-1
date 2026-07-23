@@ -160,6 +160,44 @@ setInterval(() => {
   _lastCpu = { usec, t };
   sysStats.memMB = readMemMB();
 }, 2000);
+// ---- host NIC throughput (container is on host networking, so these are Unraid's) ----
+// NDI SpeedHQ is roughly ~1.1 bits per pixel; used to estimate per-stream cost.
+const NDI_BPP = 0.75;
+function ndiMbps(w, h, fps) { return Math.round(w * h * fps * NDI_BPP / 1e6); }
+let netStats = { rxMbps: 0, txMbps: 0, ifaces: [] };
+function readNetDev() {
+  const out = {};
+  try {
+    for (const l of fs.readFileSync('/proc/net/dev', 'utf8').split('\n').slice(2)) {
+      const m = l.trim().match(/^([^:]+):\s*(.+)$/); if (!m) continue;
+      const name = m[1].trim();
+      // physical NICs only — bond/br/shim are stacked layers carrying the SAME
+      // packets, so counting them would multiply the real throughput.
+      if (/^(lo|docker|veth|br|bond|shim|virbr|tun|tap)/.test(name)) continue;
+      const f = m[2].trim().split(/\s+/).map(Number);
+      out[name] = { rx: f[0], tx: f[8] };
+    }
+  } catch (e) {}
+  return out;
+}
+let _lastNet = { v: readNetDev(), t: Date.now() };
+setInterval(() => {
+  const v = readNetDev(), t = Date.now();
+  const dt = (t - _lastNet.t) / 1000;
+  if (dt > 0) {
+    const ifaces = []; let rxT = 0, txT = 0;
+    for (const k of Object.keys(v)) {
+      const p = _lastNet.v[k]; if (!p) continue;
+      const rx = (v[k].rx - p.rx) * 8 / 1e6 / dt, tx = (v[k].tx - p.tx) * 8 / 1e6 / dt;
+      if (rx > 0.05 || tx > 0.05) ifaces.push({ name: k, rxMbps: +rx.toFixed(1), txMbps: +tx.toFixed(1) });
+      rxT += rx; txT += tx;
+    }
+    ifaces.sort((a, b) => b.txMbps - a.txMbps);
+    netStats = { rxMbps: +rxT.toFixed(1), txMbps: +txT.toFixed(1), ifaces: ifaces.slice(0, 4) };
+  }
+  _lastNet = { v, t };
+}, 2000);
+
 function pollGpu() {
   exec('nvidia-smi --query-gpu=index,utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits',
     { timeout: 4000 }, (err, out) => {
@@ -179,9 +217,19 @@ function startChannel(ch) {
 
   const sender = spawn('python3', [path.join(__dirname, 'sender.py')], {
     env: { ...process.env, CG_FPS: String(ch.fps), NDI_NAME: ch.name, CG_ALPHA: ch.alpha ? '1' : '0' },
-    stdio: ['pipe', 'inherit', 'inherit'],
+    stdio: ['pipe', 'inherit', 'pipe'],
   });
   rt.sender = sender;
+  let errbuf = '';
+  sender.stderr.on('data', (d) => {          // parse "#STATS {...}" lines, pass the rest through
+    errbuf += d.toString();
+    let i;
+    while ((i = errbuf.indexOf('\n')) >= 0) {
+      const line = errbuf.slice(0, i); errbuf = errbuf.slice(i + 1);
+      if (line.startsWith('#STATS')) { try { rt.conn = JSON.parse(line.slice(6).trim()).conn; } catch (e) {} }
+      else if (line.trim()) console.error(`[${ch.id}] ${line}`);
+    }
+  });
   sender.stdin.on('drain', () => { rt.backed = false; });
   sender.stdin.on('error', () => {});
   sender.on('exit', (c) => { if (RT[ch.id] === rt && !rt.stopping) console.error(`[${ch.id}] sender exited (${c})`); });
@@ -275,14 +323,19 @@ function startControlServer() {
       if (req.method === 'GET' && pathname === '/status') {
         const metrics = {}; try { for (const m of app.getAppMetrics()) metrics[m.pid] = m; } catch (e) {}
         res.writeHead(200, { 'Content-Type': 'application/json' });
+        const chans = channels.map(c => {
+          const rt = RT[c.id] || {};
+          let cpu = null, memMB = null;
+          try { const pid = rt.win && !rt.win.isDestroyed() ? rt.win.webContents.getOSProcessId() : 0; const m = metrics[pid]; if (m) { cpu = Math.round(m.cpu.percentCPUUsage); memMB = Math.round((m.memory.workingSetSize || 0) / 1024); } } catch (e) {}
+          const per = ndiMbps(c.width, c.height, c.fps);
+          const conn = (rt.conn === undefined || rt.conn === null) ? null : rt.conn;
+          return { ...c, fpsActual: rt.fpsActual || 0, connected: !!(rt.sender && rt.win), page: rt.page || null, cpu, memMB,
+                   conn, ndiPerStreamMbps: per, ndiOutMbps: (conn && conn > 0) ? per * conn : 0 };
+        });
         res.end(JSON.stringify({
-          gl: GL, machineName: os.hostname().toUpperCase(), system: sysStats,
-          channels: channels.map(c => {
-            const rt = RT[c.id] || {};
-            let cpu = null, memMB = null;
-            try { const pid = rt.win && !rt.win.isDestroyed() ? rt.win.webContents.getOSProcessId() : 0; const m = metrics[pid]; if (m) { cpu = Math.round(m.cpu.percentCPUUsage); memMB = Math.round((m.memory.workingSetSize || 0) / 1024); } } catch (e) {}
-            return { ...c, fpsActual: rt.fpsActual || 0, connected: !!(rt.sender && rt.win), page: rt.page || null, cpu, memMB };
-          }),
+          gl: GL, machineName: os.hostname().toUpperCase(),
+          system: { ...sysStats, net: netStats, ndiTotalMbps: chans.reduce((a, c) => a + (c.ndiOutMbps || 0), 0) },
+          channels: chans,
         }));
         return;
       }

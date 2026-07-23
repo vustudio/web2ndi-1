@@ -4,7 +4,7 @@
 Wire protocol on stdin: an 8-byte header (uint32 LE width, uint32 LE height)
 followed by an endless stream of width*height*4 BGRA frames.
 """
-import os, sys, struct
+import os, sys, struct, time
 from fractions import Fraction
 from cyndilib import Sender, VideoSendFrame, FourCC
 
@@ -43,6 +43,17 @@ mv = memoryview(bytearray(frame_size))
 sys.stderr.write(f"[sender] NDI '{NAME}' {W}x{H}@{FPS} {'BGRA' if ALPHA else 'BGRX'} {frame_size}B\n")
 sys.stderr.flush()
 
+def num_connections():
+    """How many NDI receivers are pulling this source (0 => it costs no bandwidth)."""
+    try:
+        return sender.get_num_connections(0)
+    except TypeError:
+        try: return sender.get_num_connections()
+        except Exception: return -1
+    except Exception:
+        return -1
+
+last_stat = 0.0
 with sender:
     while True:
         got = 0
@@ -52,3 +63,8 @@ with sender:
                 sys.exit(0)                # stdin closed -> Electron gone
             got += r
         sender.write_video_async(mv)
+        now = time.time()
+        if now - last_stat >= 1.0:         # report receiver count to the parent
+            last_stat = now
+            sys.stderr.write('#STATS {"conn": %d}\n' % num_connections())
+            sys.stderr.flush()
