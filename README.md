@@ -124,3 +124,31 @@ on its host (then mDNS works fine).
   a small HTTP/WS control endpoint.
 - **Frame pacing:** frames are pushed as Chromium paints; under load, frames are
   dropped (never queued) to stay realtime.
+
+## Backlog
+
+**Audio → NDI (transport done, capture blocked).**
+The NDI side is finished and verified: the native addon queues planar float (FLTP)
+alongside video on the same worker thread, and a receiver confirms audio frames
+arriving at 23 blocks/sec (48000/2048). Enable with `CG_AUDIO=1` (default off —
+a silent NDI audio track is worse than none).
+
+What's blocked is tapping the *page's* audio. `createMediaElementSource` throws
+`parameter 1 is not of type 'HTMLMediaElement'` even though the elements report
+`instanceof HTMLMediaElement === true` and `ownerDocument === document`. The tell is
+`Object.prototype.toString.call(el) === "[object EventTarget]"` — we hold cross-realm
+wrapper objects and WebAudio's native brand check sees through them.
+
+Ruled out (with evidence): `contextIsolation:false`, `sandbox:false`, and injecting
+the tap as a real `<script>` element (it injects, still reports EventTarget).
+`AudioContext` itself is native, not overridden by the page.
+
+**Recommended next approach:** capture at the OS level, not the page level — a
+PulseAudio null sink in the container, read via `parec`, into the addon's existing
+`sendAudio()`. Page-, realm- and CORS-independent.
+
+**Also open:**
+- Shared-texture OSR (`offscreen: { useSharedTexture: true }`) — the GPU zero-copy
+  readback path; the remaining structural step toward 4K60.
+- A black bar has been seen on the right of ch1's render; it originates in Chromium's
+  own paint (visible via `toJPEG`), so it is page layout rather than the NDI path.
