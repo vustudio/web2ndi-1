@@ -6,8 +6,13 @@ publishes it as a **native NDI source** — the same concept as the Sienna NDIPE
 GPU-accelerated on your own hardware.
 
 ```
-Electron (Chromium, offscreen, GPU)  --BGRA frames-->  sender.py (cyndilib)  -->  NDI source on the LAN
+Electron (Chromium, offscreen, GPU) --BGRA--> native in-process NDI sender --> NDI source on the LAN
+                     x N channels, each with its own session + NDI output
 ```
+
+Multi-channel: one Electron process hosts N independent "channels", each with its own
+URL, resolution, fps, NDI name and **persistent session partition** (so logins/cookies
+are isolated and survive restarts). Channels live in `/data/channels.json`.
 
 ## How it maps to the Sienna CG Engine node
 
@@ -86,6 +91,8 @@ POST /config  {"width","height","fps","ndiName","alpha"}  → apply + restart
 | `NDI_DISCOVERY_SERVER` | (unset) | discovery server IP(s) — see below |
 | `NDI_GROUP` | public | NDI send group (must match what receivers listen on) |
 | `CTRL_PORT` | 8099 | web control panel port (`http://<host>:8099/`) |
+| `CG_ADAPTIVE` | 1 | `0` disables tally/receiver-driven frame-rate adaptation |
+| `CG_AUDIO` | 0 | `1` enables the (currently silent) page audio tap — see Backlog |
 
 ## Networking / NDI discovery
 
@@ -117,13 +124,14 @@ on its host (then mDNS works fine).
   actually in use with `nvidia-smi` (you should see the `electron`/`chrome` process).
   If WebGL falls back to SwiftShader, check the NVIDIA Container Toolkit install and
   that `NVIDIA_DRIVER_CAPABILITIES=all`.
-- **Audio:** not sent yet (the Sienna CG node is video-only too). cyndilib supports
-  audio frames — can be added.
-- **Metadata-in (`ndimetadatareceived`):** not wired yet. A future version can expose
-  the same JS hook by injecting a preload script and feeding it from NDI metadata or
-  a small HTTP/WS control endpoint.
-- **Frame pacing:** frames are pushed as Chromium paints; under load, frames are
-  dropped (never queued) to stay realtime.
+- **Audio:** see Backlog — NDI transport works, page capture is blocked.
+- **Metadata-in (`ndimetadatareceived`):** not wired. Control is HTTP instead.
+- **Frame pacing:** a fixed timer transmits the newest frame, and libndi paces the
+  output itself (`clock_video=true`). Chromium delivers paints in bursts, so gating
+  on paint arrival collapses the rate — don't do that.
+- **Adaptive rate** (`CG_ADAPTIVE`, default on): full rate only when on PGM/PVW,
+  fps/3 when merely connected, 1 fps with no receivers. This is how you run many
+  channels — spend frames only where they're seen.
 
 ## Backlog
 
