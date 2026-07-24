@@ -69,7 +69,7 @@ Open **`http://<host>:8099/`** (port set by `CTRL_PORT`). It gives you:
 The panel is a same-origin SPA driving the REST API below; every endpoint is
 scriptable directly. The full contract is an **OpenAPI 3.1 spec** in
 [`openapi.yaml`](openapi.yaml), served live at **`/openapi.yaml`** with an
-interactive **Swagger UI at `/docs`** — dark-themed, assets bundled (no CDN, works
+interactive **Swagger UI at `/docs`** — dark-themed (Amoenus/SwaggerDark, MIT), assets bundled (no CDN, works
 air-gapped), and its "Try it out" calls hit this server directly.
 
 ```
