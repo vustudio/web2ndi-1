@@ -1,19 +1,23 @@
 'use strict';
 // webcg-ndi (multi-channel): one Electron process hosts N offscreen "channels".
 // Each channel = its own browser (own persistent session partition), rendered to
-// its own NDI output via a dedicated sender.py. Channels are configured/persisted
+// its own NDI output via the in-process native sender. Channels are configured/persisted
 // in /data/channels.json and managed from one HTTP control panel.
 const { app, BrowserWindow } = require('electron');
-const { spawn, exec } = require('child_process');
+const { exec } = require('child_process');
 const http = require('http');
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
+// In-process NDI sender (native addon). Replaces the old pipe -> python -> libndi
+// path, which copied each frame ~4 times and capped throughput far below target.
+const ndi = require(path.join(__dirname, '..', 'build', 'Release', 'ndi_sender.node'));
 
 const DATA_DIR = process.env.CG_DATA_DIR || '/data';
 const CHANNELS_FILE = path.join(DATA_DIR, 'channels.json');
 const GL = process.env.CG_GL || 'egl';
 const CTRL_PORT = parseInt(process.env.CTRL_PORT || '8099', 10);
+const NDI_GROUP = process.env.NDI_GROUP || '';
 
 // Persistent profile root (each channel's persist: partition lives under here).
 try { app.setPath('userData', DATA_DIR); } catch (e) {}
@@ -212,29 +216,14 @@ pollGpu();
 
 // ---- per-channel sender + offscreen window --------------------------------
 function startChannel(ch) {
-  const rt = RT[ch.id] = { win: null, sender: null, backed: false, headerSent: false,
-    latestJpeg: null, paints: 0, fpsActual: 0, sent: 0, fpsSent: 0, nextDue: 0,
-    lastJpegAt: 0, tick: null, fpsTick: null, stopping: false };
+  const rt = RT[ch.id] = { win: null, ndiId: null, lastImage: null,
+    latestJpeg: null, paints: 0, fpsActual: 0, sent: 0, fpsSent: 0,
+    lastJpegAt: 0, tick: null, fpsTick: null, sendTick: null, scrapeTick: null, stopping: false };
 
-  const sender = spawn('python3', [path.join(__dirname, 'sender.py')], {
-    env: { ...process.env, CG_FPS: String(ch.fps), NDI_NAME: ch.name, CG_ALPHA: ch.alpha ? '1' : '0' },
-    stdio: ['pipe', 'inherit', 'pipe'],
-  });
-  rt.sender = sender;
-  let errbuf = '';
-  sender.stderr.on('data', (d) => {          // parse "#STATS {...}" lines, pass the rest through
-    errbuf += d.toString();
-    let i;
-    while ((i = errbuf.indexOf('\n')) >= 0) {
-      const line = errbuf.slice(0, i); errbuf = errbuf.slice(i + 1);
-      if (line.startsWith('#STATS')) { try { rt.conn = JSON.parse(line.slice(6).trim()).conn; } catch (e) {} }
-      else if (line.trim()) console.error(`[${ch.id}] ${line}`);
-    }
-  });
-  sender.stdin.on('drain', () => { rt.backed = false; });
-  sender.stdin.on('error', () => {});
-  sender.on('exit', (c) => { if (RT[ch.id] === rt && !rt.stopping) console.error(`[${ch.id}] sender exited (${c})`); });
-  console.log(`[${ch.id}] sender -> "${ch.name}" ${ch.width}x${ch.height}@${ch.fps} alpha=${ch.alpha}`);
+  // The NDI sender is created lazily on the first frame, so it is sized to what
+  // Chromium actually paints rather than what we asked for.
+  rt.ndiId = null;
+  console.log(`[${ch.id}] channel -> "${ch.name}" ${ch.width}x${ch.height}@${ch.fps} alpha=${ch.alpha}`);
 
   const win = new BrowserWindow({
     width: ch.width, height: ch.height, useContentSize: true, show: false, frame: false,
@@ -259,17 +248,21 @@ function startChannel(ch) {
     if (now - rt.lastJpegAt > 500) { rt.lastJpegAt = now; try { rt.latestJpeg = image.toJPEG(60); } catch (e) {} }
   });
   rt.sendTick = setInterval(() => {
-    if (!rt.lastImage || rt.backed || !rt.sender || !rt.sender.stdin.writable) return;
+    if (!rt.lastImage) return;
     let bmp; try { bmp = rt.lastImage.getBitmap(); } catch (e) { return; }
     if (!bmp || bmp.length === 0) return;
-    if (!rt.headerSent) {
+    if (!rt.ndiId) {
       const s = rt.lastImage.getSize();
-      const h = Buffer.alloc(8); h.writeUInt32LE(s.width, 0); h.writeUInt32LE(s.height, 4);
-      rt.sender.stdin.write(h); rt.headerSent = true;
-      console.log(`[${ch.id}] first frame ${s.width}x${s.height}`);
+      try {
+        rt.ndiId = ndi.createSender({
+          name: ch.name, groups: NDI_GROUP || undefined,
+          width: s.width, height: s.height, fps: ch.fps,
+          fourcc: ch.alpha ? 'BGRA' : 'BGRX',
+        });
+      } catch (e) { console.error(`[${ch.id}] NDI create failed: ${e.message}`); return; }
+      console.log(`[${ch.id}] NDI "${ch.name}" ${s.width}x${s.height}@${ch.fps} ${ch.alpha ? 'BGRA' : 'BGRX'}`);
     }
-    if (!rt.sender.stdin.write(bmp)) rt.backed = true;
-    rt.sent++;
+    if (ndi.sendFrame(rt.ndiId, bmp)) rt.sent++;
   }, Math.max(1, Math.round(frameMs)));
   // Periodically scrape player status (id / licensed / connected) from the DOM.
   rt.scrapeTick = setInterval(() => {
@@ -287,7 +280,8 @@ function stopChannel(id) {
   if (rt.fpsTick) clearInterval(rt.fpsTick);
   if (rt.sendTick) clearInterval(rt.sendTick);
   if (rt.scrapeTick) clearInterval(rt.scrapeTick);
-  if (rt.sender) { try { rt.sender.kill('SIGKILL'); } catch (e) {} }
+  rt.lastImage = null;
+  if (rt.ndiId) { try { ndi.destroySender(rt.ndiId); } catch (e) {} rt.ndiId = null; }
   if (rt.win) { try { rt.win.destroy(); } catch (e) {} }
   delete RT[id];
 }
@@ -340,8 +334,11 @@ function startControlServer() {
           let cpu = null, memMB = null;
           try { const pid = rt.win && !rt.win.isDestroyed() ? rt.win.webContents.getOSProcessId() : 0; const m = metrics[pid]; if (m) { cpu = Math.round(m.cpu.percentCPUUsage); memMB = Math.round((m.memory.workingSetSize || 0) / 1024); } } catch (e) {}
           const per = ndiMbps(c.width, c.height, c.fps);
-          const conn = (rt.conn === undefined || rt.conn === null) ? null : rt.conn;
-          return { ...c, fpsActual: rt.fpsActual || 0, fpsSent: rt.fpsSent || 0, connected: !!(rt.sender && rt.win), page: rt.page || null, cpu, memMB,
+          let conn = null, tally = null;
+          if (rt.ndiId) {
+            try { const st = ndi.getStats(rt.ndiId); conn = st.connections; tally = { program: !!st.onProgram, preview: !!st.onPreview }; } catch (e) {}
+          }
+          return { ...c, fpsActual: rt.fpsActual || 0, fpsSent: rt.fpsSent || 0, connected: !!(rt.ndiId && rt.win), tally, page: rt.page || null, cpu, memMB,
                    conn, ndiPerStreamMbps: per, ndiOutMbps: (conn && conn > 0) ? per * conn : 0 };
         });
         res.end(JSON.stringify({

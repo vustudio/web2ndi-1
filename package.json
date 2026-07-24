@@ -1,9 +1,16 @@
 {
   "name": "webcg-ndi",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Headless web page -> NDI output. Standalone, GPU-accelerated recreation of the Sienna NDIPE CG Engine node.",
+  "description": "Headless web pages -> NDI. Multi-channel, GPU-accelerated, with an in-process native NDI sender.",
   "main": "src/main.js",
-  "scripts": { "start": "electron . --no-sandbox" },
-  "dependencies": { "electron": "^33.2.0" }
+  "scripts": {
+    "start": "electron . --no-sandbox",
+    "build:native": "node-gyp rebuild --target=$(node -p \"require('electron/package.json').version\") --arch=x64 --dist-url=https://electronjs.org/headers"
+  },
+  "dependencies": {
+    "electron": "^33.2.0",
+    "node-addon-api": "^8.9.0",
+    "node-gyp": "^11.0.0"
+  }
 }
