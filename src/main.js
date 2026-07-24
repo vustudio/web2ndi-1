@@ -3,7 +3,7 @@
 // Each channel = its own browser (own persistent session partition), rendered to
 // its own NDI output via the in-process native sender. Channels are configured/persisted
 // in /data/channels.json and managed from one HTTP control panel.
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, session } = require('electron');
 const { exec } = require('child_process');
 const http = require('http');
 const os = require('os');
@@ -35,6 +35,8 @@ try { app.setPath('userData', DATA_DIR); } catch (e) {}
 
 app.commandLine.appendSwitch('no-sandbox');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
+// Let media start on its own: no "click anywhere to enable sound" gate.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disable-frame-rate-limit');
 app.commandLine.appendSwitch('disable-dev-shm-usage');
 if (GL === 'swiftshader') {
@@ -236,12 +238,21 @@ function startChannel(ch) {
   rt.ndiId = null;
   console.log(`[${ch.id}] channel -> "${ch.name}" ${ch.width}x${ch.height}@${ch.fps} alpha=${ch.alpha}`);
 
+  // Auto-grant media permissions for this channel's session so players can start
+  // audio/video without a human gesture.
+  try {
+    const ses = session.fromPartition('persist:' + ch.id);
+    ses.setPermissionRequestHandler((_wc, _perm, cb) => cb(true));
+    ses.setPermissionCheckHandler(() => true);
+  } catch (e) { console.error(`[${ch.id}] permission handler: ${e.message}`); }
+
   const win = new BrowserWindow({
     width: ch.width, height: ch.height, useContentSize: true, show: false, frame: false,
     transparent: ch.alpha, backgroundColor: ch.alpha ? '#00000000' : '#000000',
     webPreferences: { offscreen: true, backgroundThrottling: false, partition: 'persist:' + ch.id },
   });
   rt.win = win;
+  win.webContents.setAudioMuted(false);
   win.webContents.setFrameRate(ch.fps);
   rt.invalidateFn = () => { if (win && !win.isDestroyed()) win.webContents.invalidate(); };
   rt.tick = setInterval(rt.invalidateFn, Math.max(1, Math.round(1000 / ch.fps)));
@@ -388,6 +399,31 @@ function startControlServer() {
         if (action === 'delete') { removeChannel(id); res.writeHead(200); res.end('ok'); return; }
         if (action === 'reload') { const rt = RT[id]; if (rt && rt.win && !rt.win.isDestroyed()) rt.win.reload(); res.writeHead(200); res.end('ok'); return; }
         if (action === 'url') { const b = await readBody(req); patchChannel(id, { url: b.url }); res.writeHead(200); res.end('ok'); return; }
+        if (action === 'input') {
+          // Real OS-level input injection. Unlike a synthetic DOM .click(), this
+          // works on canvas/WebGL UIs and satisfies "user gesture" requirements.
+          const b = await readBody(req);
+          const rt = RT[id];
+          if (!rt || !rt.win || rt.win.isDestroyed()) { res.writeHead(404); res.end('no window'); return; }
+          const wc = rt.win.webContents;
+          const ch = channels.find(c => c.id === id) || {};
+          try {
+            if (b.type === 'key') {
+              const k = String(b.key || 'Enter');
+              wc.sendInputEvent({ type: 'keyDown', keyCode: k });
+              wc.sendInputEvent({ type: 'char', keyCode: k });
+              wc.sendInputEvent({ type: 'keyUp', keyCode: k });
+            } else {
+              // default: a left click, centre of frame unless x/y given
+              const x = Number.isFinite(+b.x) ? +b.x : Math.round((ch.width || 1920) / 2);
+              const y = Number.isFinite(+b.y) ? +b.y : Math.round((ch.height || 1080) / 2);
+              wc.sendInputEvent({ type: 'mouseMove', x, y });
+              wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+              wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+            }
+          } catch (e) { res.writeHead(500); res.end(e.message); return; }
+          res.writeHead(200); res.end('ok'); return;
+        }
         if (action === 'click') {   // click a button on the page by its label (e.g. "Retry Connection")
           const b = await readBody(req);
           const label = String(b.label || '').toLowerCase();

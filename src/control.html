@@ -119,7 +119,7 @@ function buildCard(ch) {
     <img class="preview" alt="preview">
     <label>Source URL (live)</label>
     <input type="text" class="f_url">
-    <div class="btns"><button class="primary" data-a="url">Set URL</button><button data-a="reload">Reload</button></div>
+    <div class="btns"><button class="primary" data-a="url">Set URL</button><button data-a="reload">Reload</button><button data-a="clickcenter" title="inject a real mouse click at frame centre">Click centre</button></div>
     <div class="row" style="margin-top:8px">
       <div><label>Resolution</label><select class="f_res">
         <option value="1280x720">720p (1280×720)</option>
@@ -148,6 +148,7 @@ function buildCard(ch) {
   const val = s => c.querySelector(s).value;
   c.querySelector('[data-a="url"]').onclick = async () => { await post('channels/'+id+'/url', {url: val('.f_url')}); msg.textContent='URL set.'; };
   c.querySelector('[data-a="reload"]').onclick = async () => { await post('channels/'+id+'/reload'); msg.textContent='reloaded.'; };
+  c.querySelector('[data-a="clickcenter"]').onclick = async () => { await post('channels/'+id+'/input', {type:'click'}); msg.textContent='clicked centre.'; };
   const resSel = c.querySelector('.f_res'), crow = c.querySelector('.customres');
   resSel.onchange = () => { crow.style.display = resSel.value === 'custom' ? '' : 'none'; };
   c.querySelector('[data-a="config"]').onclick = async () => {
