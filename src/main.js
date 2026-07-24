@@ -18,6 +18,17 @@ const CHANNELS_FILE = path.join(DATA_DIR, 'channels.json');
 const GL = process.env.CG_GL || 'egl';
 const CTRL_PORT = parseInt(process.env.CTRL_PORT || '8099', 10);
 const NDI_GROUP = process.env.NDI_GROUP || '';
+// Adaptive frame rate (as Vingester does): render/send at full rate only when the
+// source is actually on air. Throttling webContents.setFrameRate() saves the GPU
+// render, the readback, the copy AND the NDI encode - not just the transmit.
+const ADAPTIVE = (process.env.CG_ADAPTIVE || '1') !== '0';
+function adaptiveTarget(ch, rt) {
+  if (!ADAPTIVE || !rt.ndiId) return ch.fps;
+  let st; try { st = ndi.getStats(rt.ndiId); } catch (e) { return ch.fps; }
+  if (!st || !st.connections) return 1;                        // nobody watching
+  if (st.onProgram || st.onPreview) return ch.fps;             // on air -> full rate
+  return Math.max(5, Math.trunc(ch.fps / 3));                  // connected, not tallied
+}
 
 // Persistent profile root (each channel's persist: partition lives under here).
 try { app.setPath('userData', DATA_DIR); } catch (e) {}
@@ -232,7 +243,8 @@ function startChannel(ch) {
   });
   rt.win = win;
   win.webContents.setFrameRate(ch.fps);
-  rt.tick = setInterval(() => { if (win && !win.isDestroyed()) win.webContents.invalidate(); }, Math.max(1, Math.round(1000 / ch.fps)));
+  rt.invalidateFn = () => { if (win && !win.isDestroyed()) win.webContents.invalidate(); };
+  rt.tick = setInterval(rt.invalidateFn, Math.max(1, Math.round(1000 / ch.fps)));
   rt.fpsTick = setInterval(() => { rt.fpsActual = rt.paints; rt.paints = 0; rt.fpsSent = rt.sent; rt.sent = 0; }, 1000);
 
   // Frame pacing. Chromium delivers paints in bursts (several within a millisecond,
@@ -247,7 +259,7 @@ function startChannel(ch) {
     const now = Date.now();
     if (now - rt.lastJpegAt > 500) { rt.lastJpegAt = now; try { rt.latestJpeg = image.toJPEG(60); } catch (e) {} }
   });
-  rt.sendTick = setInterval(() => {
+  rt.sendFn = () => {
     if (!rt.lastImage) return;
     let bmp; try { bmp = rt.lastImage.getBitmap(); } catch (e) { return; }
     if (!bmp || bmp.length === 0) return;
@@ -263,7 +275,23 @@ function startChannel(ch) {
       console.log(`[${ch.id}] NDI "${ch.name}" ${s.width}x${s.height}@${ch.fps} ${ch.alpha ? 'BGRA' : 'BGRX'}`);
     }
     if (ndi.sendFrame(rt.ndiId, bmp)) rt.sent++;
-  }, Math.max(1, Math.round(frameMs)));
+  };
+  rt.targetFps = ch.fps;
+  rt.sendTick = setInterval(rt.sendFn, Math.max(1, Math.round(frameMs)));
+
+  // Re-evaluate the adaptive rate periodically as tally / receivers change.
+  rt.adaptTick = setInterval(() => {
+    const t = adaptiveTarget(ch, rt);
+    if (t === rt.targetFps) return;
+    rt.targetFps = t;
+    const ms = Math.max(1, Math.round(1000 / Math.max(1, t)));
+    try { if (rt.win && !rt.win.isDestroyed()) rt.win.webContents.setFrameRate(Math.max(1, Math.min(240, t))); } catch (e) {}
+    if (rt.tick) clearInterval(rt.tick);
+    rt.tick = setInterval(rt.invalidateFn, ms);
+    if (rt.sendTick) clearInterval(rt.sendTick);
+    rt.sendTick = setInterval(rt.sendFn, ms);
+    console.log(`[${ch.id}] adaptive rate -> ${t} fps (of ${ch.fps})`);
+  }, 2000);
   // Periodically scrape player status (id / licensed / connected) from the DOM.
   rt.scrapeTick = setInterval(() => {
     if (!win || win.isDestroyed() || win.webContents.isLoading()) return;
@@ -279,6 +307,7 @@ function stopChannel(id) {
   if (rt.tick) clearInterval(rt.tick);
   if (rt.fpsTick) clearInterval(rt.fpsTick);
   if (rt.sendTick) clearInterval(rt.sendTick);
+  if (rt.adaptTick) clearInterval(rt.adaptTick);
   if (rt.scrapeTick) clearInterval(rt.scrapeTick);
   rt.lastImage = null;
   if (rt.ndiId) { try { ndi.destroySender(rt.ndiId); } catch (e) {} rt.ndiId = null; }
@@ -338,7 +367,8 @@ function startControlServer() {
           if (rt.ndiId) {
             try { const st = ndi.getStats(rt.ndiId); conn = st.connections; tally = { program: !!st.onProgram, preview: !!st.onPreview }; } catch (e) {}
           }
-          return { ...c, fpsActual: rt.fpsActual || 0, fpsSent: rt.fpsSent || 0, connected: !!(rt.ndiId && rt.win), tally, page: rt.page || null, cpu, memMB,
+          return { ...c, fpsActual: rt.fpsActual || 0, fpsSent: rt.fpsSent || 0, targetFps: rt.targetFps || c.fps,
+                   connected: !!(rt.ndiId && rt.win), tally, page: rt.page || null, cpu, memMB,
                    conn, ndiPerStreamMbps: per, ndiOutMbps: (conn && conn > 0) ? per * conn : 0 };
         });
         res.end(JSON.stringify({
