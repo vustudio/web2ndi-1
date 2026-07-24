@@ -846,3 +846,26 @@ a { color: #8c8cfa; }
             linear-gradient(270deg, #696969 30%, rgba(0, 0, 0, 0) 31%);
         background-color: #b6b6b6;
     }
+
+/* --- webcg override: force every <select> dark ---------------------------
+   The base swagger-ui.css sets `appearance:none` + a light background on
+   `.swagger-ui select`; SwaggerDark recolours the box but not `appearance`,
+   which on some browsers (notably macOS) reverts it to the native white
+   control. Pin appearance + a dark background-color (keeping the theme's arrow
+   image, which is a separate background-image layer) and colour the options.
+   Note: a native <select>'s OPEN popup list is drawn by the OS on macOS and
+   cannot be themed by CSS — only the closed control is under our control. */
+.swagger-ui select,
+.swagger-ui select[multiple] {
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+  background-color: #161926 !important;
+  color: #E9EBF3 !important;
+  border: 1px solid #282D3E !important;
+}
+.swagger-ui select option,
+.swagger-ui select optgroup {
+  background-color: #161926 !important;
+  color: #E9EBF3 !important;
+}
