@@ -155,8 +155,34 @@ the tap as a real `<script>` element (it injects, still reports EventTarget).
 PulseAudio null sink in the container, read via `parec`, into the addon's existing
 `sendAudio()`. Page-, realm- and CORS-independent.
 
+**Shared-texture OSR — CLOSED, do not retry on Linux.**
+`offscreen: { useSharedTexture: true }` cannot work on this stack. Measured on
+Electron 33.4.11 + NVIDIA + headless container (`src/probe-sharedtexture.js`):
+`event.texture` is always `null`, **and the flag disables the CPU readback** — the
+`NativeImage` arrives `0x0 / 0 bytes` while the dirty rect still reports 1920x1080.
+Paint events keep firing, so every counter looks healthy while the NDI output goes
+black. Never enable it on a live channel.
+
+Two independent structural causes:
+1. `--ozone-platform=headless` uses a stub `TestPixmap` in Chromium
+   (`ui/ozone/platform/headless/headless_surface_factory.cc`) whose
+   `AreDmaBufFdsValid()` returns false and `GetDmaBufFd()` returns -1. Shared
+   texture requires a real dma-buf; headless ozone structurally cannot supply one.
+2. NVIDIA's proprietary driver cannot import cross-driver dma-bufs.
+   electron#49247 reproduces this exact combination and was closed *"not planned"*.
+   Electron's own CI skips the shared-texture spec unless macOS arm64.
+
+Prior art agrees: OBS's `obs-browser` and upstream CEF gate `OnAcceleratedPaint` to
+Windows (+ macOS arm64) and fall back to CPU `OnPaint` on Linux, and have for years.
+
+**Consequence for 4K60:** with no shared texture there is no hook to convert
+BGRA→UYVY *before* the GPU→CPU copy, so the readback bytes cannot be halved —
+Chromium exposes no custom shader stage in the OSR pipeline. The remaining levers
+are libyuv/SIMD for the post-readback conversion, NDI async send, splitting
+channels across more Electron processes to parallelise readback, or abandoning OSR
+for **NvFBC** (a real X head + framebuffer capture — the only zero-copy path with a
+production track record on NVIDIA/Linux).
+
 **Also open:**
-- Shared-texture OSR (`offscreen: { useSharedTexture: true }`) — the GPU zero-copy
-  readback path; the remaining structural step toward 4K60.
 - A black bar has been seen on the right of ch1's render; it originates in Chromium's
   own paint (visible via `toJPEG`), so it is page layout rather than the NDI path.
