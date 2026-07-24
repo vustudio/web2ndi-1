@@ -1,0 +1,87 @@
+/*
+ * Terminal Grid UI — Design Tokens
+ * All color/spacing/radius primitives used by components.
+ * Overridable by consumer via :root or a parent scope.
+ */
+
+:root {
+  /* ── Brand / accent ── */
+  --tg-accent: #3794ff;
+  --tg-accent-rgb: 55, 148, 255;
+  --tg-accent-strong-rgb: 0, 127, 212;
+  --tg-accent-glow-rgb: 0, 200, 255;
+  --tg-accent-border-rgb: 0, 160, 230;
+
+  --tg-success-rgb: 100, 200, 100;
+  --tg-warn-rgb: 255, 170, 0;
+  --tg-warn-deep-rgb: 255, 120, 0;
+  --tg-danger-rgb: 255, 80, 80;
+  --tg-danger: #f55;
+
+  /* ── Foreground / text ── */
+  --tg-fg: var(--vscode-foreground, #cccccc);
+  --tg-fg-muted: rgba(255, 255, 255, 0.25);
+  --tg-fg-subtle: rgba(255, 255, 255, 0.3);
+
+  /* ── Surface layers ── */
+  --tg-surface-0:    rgba(255, 255, 255, 0.02);
+  --tg-surface-1:    rgba(255, 255, 255, 0.025);
+  --tg-surface-2:    rgba(255, 255, 255, 0.03);
+  --tg-surface-3:    rgba(255, 255, 255, 0.035);
+  --tg-surface-4:    rgba(255, 255, 255, 0.04);
+  --tg-surface-5:    rgba(255, 255, 255, 0.06);
+  --tg-surface-6:    rgba(255, 255, 255, 0.07);
+  --tg-surface-8:    rgba(255, 255, 255, 0.08);
+  --tg-surface-sunken: rgba(0, 0, 0, 0.15);
+
+  /* Glass panel surface — referenced by components.css (header/hero); defined
+     here in terms of the surface/border scale so consumers don't have to. */
+  --tg-glass-bg:     var(--tg-surface-3);
+  --tg-glass-border: var(--tg-border-4);
+
+  /* ── Borders ── */
+  --tg-border-1:  rgba(255, 255, 255, 0.04);
+  --tg-border-2:  rgba(255, 255, 255, 0.05);
+  --tg-border-3:  rgba(255, 255, 255, 0.06);
+  --tg-border-4:  rgba(255, 255, 255, 0.08);
+  --tg-border-5:  rgba(255, 255, 255, 0.10);
+  --tg-border-6:  rgba(255, 255, 255, 0.12);
+  --tg-border-7:  rgba(255, 255, 255, 0.14);
+  --tg-border-8:  rgba(255, 255, 255, 0.16);
+
+  /* ── Radii ── */
+  --tg-radius-xs: 3px;
+  --tg-radius-sm: 4px;
+  --tg-radius:    6px;
+  --tg-radius-md: 8px;
+  --tg-radius-lg: 10px;
+  --tg-radius-xl: 14px;
+
+  /* ── Shadows ── */
+  --tg-shadow-card:    0 4px 24px rgba(0, 0, 0, 0.12);
+  --tg-shadow-btn:     0 4px 12px rgba(0, 0, 0, 0.10);
+  --tg-shadow-dropdown:0 -4px 24px rgba(0, 0, 0, 0.30);
+  --tg-shadow-tip:     0 4px 20px rgba(0, 0, 0, 0.35);
+  --tg-shadow-glow:    0 4px 20px rgba(var(--tg-accent-border-rgb), 0.12);
+  --tg-shadow-selected:0 0 10px rgba(0, 150, 230, 0.12);
+
+  /* ── Backgrounds derived from VS Code vars (fallbacks) ── */
+  --tg-dropdown-bg: var(--vscode-dropdown-background, #252526);
+  --tg-hover-bg:    var(--vscode-editorHoverWidget-background, #2d2d30);
+  --tg-hover-border:var(--vscode-editorHoverWidget-border, var(--tg-border-6));
+  --tg-hover-fg:    var(--vscode-editorHoverWidget-foreground, var(--tg-fg));
+  --tg-focus:       var(--vscode-focusBorder, rgba(var(--tg-accent-strong-rgb), 0.6));
+  --tg-link-fg:     var(--vscode-textLink-foreground, var(--tg-accent));
+
+  /* ── Accent gradients ── */
+  --tg-grad-accent-soft: linear-gradient(135deg, rgba(var(--tg-accent-strong-rgb), 0.22), rgba(var(--tg-accent-glow-rgb), 0.10));
+  --tg-grad-accent-med:  linear-gradient(135deg, rgba(var(--tg-accent-strong-rgb), 0.30), rgba(var(--tg-accent-glow-rgb), 0.18));
+  --tg-grad-accent-hard: linear-gradient(135deg, rgba(var(--tg-accent-strong-rgb), 0.45), rgba(var(--tg-accent-glow-rgb), 0.28));
+  --tg-grad-accent-selecting: linear-gradient(135deg, rgba(var(--tg-accent-strong-rgb), 0.35), rgba(var(--tg-accent-glow-rgb), 0.20));
+  --tg-grad-success:     linear-gradient(135deg, rgba(var(--tg-success-rgb), 0.20), rgba(60, 180, 60, 0.12));
+  --tg-grad-warn:        linear-gradient(135deg, rgba(var(--tg-warn-rgb), 0.12), rgba(var(--tg-warn-deep-rgb), 0.08));
+
+  /* ── Font ── */
+  --tg-font: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  --tg-font-mono: var(--vscode-editor-fontFamily, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+}

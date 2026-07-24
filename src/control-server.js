@@ -67,6 +67,20 @@ function start(deps) {
         }
         return;
       }
+      if (req.method === 'GET' && parts[0] === 'tg') {
+        // Vendored Terminal Grid UI (tokens.css, components.css, index.js,
+        // components/*.js). Served as a static subtree; path-traversal guarded.
+        const rel = parts.slice(1).join('/');
+        if (!rel || rel.includes('..')) { res.writeHead(404); res.end('no asset'); return; }
+        const TYPES = { '.css': 'text/css', '.js': 'application/javascript', '.md': 'text/markdown' };
+        const ext = rel.slice(rel.lastIndexOf('.'));
+        try {
+          const file = path.join(__dirname, 'tg', rel);
+          res.writeHead(200, { 'Content-Type': TYPES[ext] || 'application/octet-stream', 'Cache-Control': 'max-age=3600' });
+          res.end(fs.readFileSync(file));
+        } catch (e) { res.writeHead(404); res.end('asset unavailable'); }
+        return;
+      }
       if (req.method === 'GET' && (pathname === '/docs' || pathname === '/docs/')) {
         // Swagger UI, dark-themed, pointed at our own spec. Assets are bundled
         // (served from /docs-assets/) — no CDN, so it works air-gapped. Same

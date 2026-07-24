@@ -3,282 +3,162 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>webcg·ndi</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<title>webcg · ndi</title>
+<link rel="stylesheet" href="/tg/tokens.css">
+<link rel="stylesheet" href="/tg/components.css">
 <style>
 /* ============================================================================
-   webcg·ndi — broadcast operations surface
-   Design law: colour is a signal, not decoration. The chrome is achromatic
-   violet-cast graphite; saturated colour is reserved for signal state alone,
-   so an on-air channel is the only red on the page.
+   Page chrome only. Every colour is a Terminal Grid --tg-* token; component
+   styling comes from components.css. The aurora/grid backdrop is reproduced
+   from the Terminal Grid landing page (its named hues declared once below).
    ========================================================================== */
 :root{
-  /* surface — graphite with a violet cast, deliberately not neutral black */
-  --rack-950:#07080D; --rack-900:#0C0E16; --rack-850:#11131D;
-  --rack-800:#161926; --rack-750:#1B1F2D; --rack-700:#222739;
-  --edge:#282D3E; --edge-soft:#1E2231;
-
-  /* ink */
-  --ink:#E9EBF3; --ink-2:#A6ADC2; --ink-3:#6B7288;
-
-  /* signal — the only saturated colour in the system */
-  --sig-pgm:#FF2B3D; --sig-pvw:#1FD97B; --sig-warn:#FFB020; --sig-live:#4FD8E9;
-
-  /* interaction */
-  --act:#4FD8E9; --act-ink:#05131A; --act-dim:#2A7F8B;
-
-  /* space */
-  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:22px; --s6:32px; --s7:44px;
-
-  /* radius */
-  --r1:6px; --r2:10px; --r3:16px; --pill:999px;
-
-  /* elevation */
-  --sh-1:0 1px 0 rgba(255,255,255,.035) inset, 0 10px 26px -16px rgba(0,0,0,.9);
-  --sh-2:0 24px 60px -30px rgba(0,0,0,.95);
-
-  /* type */
-  --f-ui:'Archivo',ui-sans-serif,system-ui,'Segoe UI',Roboto,sans-serif;
-  --f-mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
-
-  /* motion */
-  --e:cubic-bezier(.2,.7,.2,1); --t1:140ms; --t2:280ms;
+  /* aurora hues — declared once, referenced by the backdrop rules (no inline literals) */
+  --aura-blue: var(--tg-accent-rgb);   /* 55,148,255 — matches the accent */
+  --aura-violet: 139, 92, 246;
+  --aura-mint: 16, 185, 129;
 }
-
-*{box-sizing:border-box}
-html,body{margin:0}
+*{margin:0; padding:0; box-sizing:border-box}
+html,body{min-height:100%}
 body{
-  background:
-    radial-gradient(1200px 600px at 15% -10%, #171a2b 0%, transparent 60%),
-    var(--rack-900);
-  color:var(--ink); font-family:var(--f-ui); font-size:14px; line-height:1.45;
+  font-family:var(--tg-font); color:var(--tg-fg);
+  background:#0f0f12;                       /* base canvas (matches TG landing) */
   -webkit-font-smoothing:antialiased;
+  padding:24px 20px 80px; position:relative; overflow-x:hidden;
 }
-/* faint grain: reads as anodised equipment rather than flat web surface */
+/* animated aurora — verbatim behaviour from Terminal Grid index.html */
 body::before{
-  content:""; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.035;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  content:''; position:fixed; inset:0; z-index:-2; pointer-events:none;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 20%, rgba(var(--aura-blue), .12) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 80% at 80% 80%, rgba(var(--aura-violet), .10) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 50% at 50% 50%, rgba(var(--aura-mint), .06) 0%, transparent 60%);
+  animation:aurora 18s ease-in-out infinite alternate;
 }
-a{color:var(--act); text-decoration:none}
-a:hover{text-decoration:underline}
-:focus-visible{outline:2px solid var(--act); outline-offset:2px; border-radius:var(--r1)}
+@keyframes aurora{
+  0%{transform:translate(0,0) scale(1)} 33%{transform:translate(2%,-2%) scale(1.05)}
+  66%{transform:translate(-1%,1%) scale(.98)} 100%{transform:translate(1%,-1%) scale(1.02)}
+}
+body::after{
+  content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background-image:
+    linear-gradient(rgba(255,255,255,.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.015) 1px, transparent 1px);
+  background-size:60px 60px;
+  -webkit-mask-image:radial-gradient(ellipse 70% 60% at 50% 30%, black 30%, transparent 80%);
+  mask-image:radial-gradient(ellipse 70% 60% at 50% 30%, black 30%, transparent 80%);
+}
+@media (max-width:600px){ body::before{opacity:.15} }
 
-/* ---------- top bar ---------- */
-.topbar{
-  position:sticky; top:0; z-index:10;
-  display:flex; align-items:center; gap:var(--s5); flex-wrap:wrap;
-  padding:var(--s4) var(--s5);
-  background:linear-gradient(180deg,rgba(8,9,14,.96),rgba(8,9,14,.82));
-  backdrop-filter:blur(14px);
-  border-bottom:1px solid var(--edge-soft);
-}
-.brand{display:flex; align-items:center; gap:var(--s3); min-width:0}
-.mark{
-  width:15px; height:15px; flex:0 0 auto; border-radius:3px;
-  background:linear-gradient(145deg,var(--act),#8C6BFF);
-  box-shadow:0 0 16px -2px rgba(79,216,233,.55);
-}
-.wordmark{font-weight:700; letter-spacing:-.02em; font-size:16px}
-.wordmark .sep{color:var(--act); margin:0 1px}
-.host{
-  font-family:var(--f-mono); font-size:11px; color:var(--ink-3);
-  letter-spacing:.08em; text-transform:uppercase; padding-left:var(--s3);
-  border-left:1px solid var(--edge); white-space:nowrap; cursor:pointer;
-  transition:color var(--t1) var(--e);
-}
-.host:hover{color:var(--ink-2)}
-.spacer{flex:1 1 auto}
+/* Block flow (not a flex column): tg-header centres itself via its own
+   max-width + margin:0 auto, which an auto cross-margin in a flex column would
+   otherwise collapse to content width. */
+.wrap{max-width:1400px; margin:0 auto}
+tg-header{display:block}
 
-/* telemetry: equipment read-out, mono and column-aligned */
-.telemetry{display:flex; gap:var(--s5); flex-wrap:wrap; align-items:center}
-.tel{display:flex; flex-direction:column; gap:3px; min-width:70px}
-.tel-k{font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-3)}
-.tel-v{font-family:var(--f-mono); font-size:13px; font-weight:500; letter-spacing:-.01em}
-.tel-v i{font-style:normal; color:var(--ink-3); font-size:11px}
-.meter{display:block; height:2px; background:var(--rack-700); border-radius:var(--pill); overflow:hidden}
-.meter>i{display:block; height:100%; background:var(--ink-3); transition:width var(--t2) var(--e)}
-.meter.hot>i{background:var(--sig-warn)}
-
-/* ---------- buttons ---------- */
-.btn{
-  font-family:var(--f-ui); font-size:12.5px; font-weight:600; letter-spacing:.01em;
-  color:var(--ink); background:var(--rack-750); border:1px solid var(--edge);
-  padding:8px 14px; border-radius:var(--r1); cursor:pointer;
-  transition:background var(--t1) var(--e), border-color var(--t1) var(--e), transform var(--t1) var(--e);
+/* ── telemetry strip (no meter component exists in TG — built from tokens) ── */
+.telemetry{
+  display:flex; flex-wrap:wrap; gap:22px; align-items:center; margin-bottom:16px;
+  background:var(--tg-glass-bg); border:1px solid var(--tg-glass-border);
+  border-radius:var(--tg-radius-xl); padding:14px 20px;
+  backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
 }
-.btn:hover{background:var(--rack-700); border-color:#39405a}
-.btn:active{transform:translateY(1px)}
-.btn-act{background:var(--act); color:var(--act-ink); border-color:transparent}
-.btn-act:hover{background:#6ee3f1}
-.btn-danger{color:#FF8A94; border-color:#4A2229; background:#241318}
-.btn-danger:hover{background:#2E171D}
-.btn-sm{padding:5px 9px; font-size:11px}
+.tel{display:flex; flex-direction:column; gap:4px; min-width:76px}
+.tel-k{font-size:9px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; opacity:.5; color:var(--tg-link-fg)}
+.tel-v{font-family:var(--tg-font-mono); font-size:13px; font-weight:600; opacity:.85; font-variant-numeric:tabular-nums}
+.tel-v i{font-style:normal; opacity:.45; font-size:11px}
+.meter{display:block; height:2px; border-radius:var(--tg-radius-xs); background:var(--tg-surface-sunken); overflow:hidden}
+.meter>i{display:block; height:100%; background:rgba(var(--tg-accent-strong-rgb),.6); transition:width .28s ease}
+.meter.hot>i{background:rgba(var(--tg-warn-rgb),.7)}
 
-/* ---------- grid ---------- */
-main{
-  position:relative; z-index:1;
-  max-width:1320px; margin:0 auto; padding:var(--s5);
-  display:grid; gap:var(--s5);
-  grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr));
-}
-
-/* ---------- channel strip ---------- */
-.ch{
-  position:relative; display:flex; isolation:isolate;
-  background:linear-gradient(180deg,var(--rack-800),var(--rack-850));
-  border:1px solid var(--edge-soft); border-radius:var(--r3);
-  box-shadow:var(--sh-1); overflow:hidden;
-  transition:border-color var(--t2) var(--e), box-shadow var(--t2) var(--e);
-  animation:rise var(--t2) var(--e) both;
-}
-@keyframes rise{from{opacity:0; transform:translateY(6px)}to{opacity:1; transform:none}}
-
-/* SIGNATURE: the four-state tally rail */
-.rail{
-  flex:0 0 5px; align-self:stretch; background:var(--rack-700);
-  transition:background var(--t2) var(--e), box-shadow var(--t2) var(--e);
-}
-.rail[data-state="live"]{background:var(--sig-live); box-shadow:0 0 18px -2px rgba(79,216,233,.6)}
-.rail[data-state="pvw"]{background:var(--sig-pvw); box-shadow:0 0 18px -2px rgba(31,217,123,.6)}
-.rail[data-state="pgm"]{background:var(--sig-pgm); box-shadow:0 0 22px 0 rgba(255,43,61,.75); animation:tally 1.6s ease-in-out infinite}
+/* ── channel grid ── */
+.grid{display:grid; gap:16px; grid-template-columns:repeat(auto-fill, minmax(min(100%,420px),1fr))}
+.ch-card{position:relative; overflow:hidden}
+/* tally rail — states expressed only through signal tokens */
+.rail{position:absolute; left:0; top:0; bottom:0; width:4px; border-radius:var(--tg-radius-xl) 0 0 var(--tg-radius-xl);
+  background:var(--tg-border-4); transition:background .28s, box-shadow .28s}
+.rail[data-state="live"]{background:rgba(var(--tg-accent-glow-rgb),.7); box-shadow:0 0 14px -2px rgba(var(--tg-accent-glow-rgb),.5)}
+.rail[data-state="pvw"]{background:rgba(var(--tg-success-rgb),.8); box-shadow:0 0 14px -2px rgba(var(--tg-success-rgb),.5)}
+.rail[data-state="pgm"]{background:rgba(var(--tg-danger-rgb),.9); box-shadow:0 0 16px 0 rgba(var(--tg-danger-rgb),.6); animation:tally 1.6s ease-in-out infinite}
 @keyframes tally{0%,100%{opacity:1}50%{opacity:.55}}
+.ch-card.onair{border-color:rgba(var(--tg-danger-rgb),.4)}
 
-/* on-air takes over the whole strip — the one loud moment */
-.ch.onair{border-color:var(--sig-pgm); box-shadow:0 0 0 1px rgba(255,43,61,.35), var(--sh-2)}
-.onair-bar{
-  display:none; align-items:center; gap:var(--s2);
-  font-family:var(--f-mono); font-size:10px; font-weight:600; letter-spacing:.22em;
-  text-transform:uppercase; color:#fff; background:var(--sig-pgm);
-  padding:4px var(--s4);
-}
-.ch.onair .onair-bar{display:flex}
-.onair-bar::before{content:""; width:6px; height:6px; border-radius:50%; background:#fff; animation:tally 1.6s ease-in-out infinite}
+.ch-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px}
+.ch-tag{font-family:var(--tg-font-mono); font-size:10px; font-weight:700; letter-spacing:.8px; text-transform:uppercase;
+  color:var(--tg-fg); opacity:.85; background:var(--tg-surface-3); border:1px solid var(--tg-border-4);
+  border-radius:var(--tg-radius-sm); padding:2px 7px}
+.ch-name{font-size:16px; font-weight:700; letter-spacing:-.2px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+/* player-state badge — reuses the .stab chip colour language via tokens */
+.badge{font-family:var(--tg-font-mono); font-size:9px; font-weight:700; letter-spacing:.6px; text-transform:uppercase;
+  padding:3px 8px; border-radius:var(--tg-radius); border:1px solid var(--tg-border-4);
+  background:var(--tg-surface-2); color:var(--tg-fg); opacity:.6}
+.badge[data-s="licensed"]{opacity:1; color:rgb(var(--tg-success-rgb)); background:rgba(var(--tg-success-rgb),.12); border-color:rgba(var(--tg-success-rgb),.35)}
+.badge[data-s="unlicensed"]{opacity:1; color:rgb(var(--tg-warn-rgb)); background:rgba(var(--tg-warn-rgb),.12); border-color:rgba(var(--tg-warn-rgb),.35)}
+.badge[data-s="blocked"]{opacity:1; color:rgb(var(--tg-danger-rgb)); background:rgba(var(--tg-danger-rgb),.12); border-color:rgba(var(--tg-danger-rgb),.35)}
 
-.body{flex:1 1 auto; min-width:0; padding:var(--s4) var(--s4) var(--s4)}
-.ch.onair .body{padding-top:var(--s3)}
+.ident{display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:12px; min-height:22px}
+.pid{font-family:var(--tg-font-mono); font-size:13px; font-weight:600; letter-spacing:.4px; color:var(--tg-fg);
+  background:var(--tg-surface-sunken); border:1px solid var(--tg-border-4); border-radius:var(--tg-radius); padding:2px 8px; cursor:pointer; user-select:all}
+.pid:hover{border-color:var(--tg-border-8)}
+.ident .warn{font-size:11px; opacity:.6; color:rgb(var(--tg-warn-rgb))}
 
-/* identity row */
-.head{display:flex; align-items:center; gap:var(--s2); flex-wrap:wrap; margin-bottom:var(--s1)}
-/* label-tape chip: how gear is actually labelled in a rack */
-.tape{
-  font-family:var(--f-mono); font-size:10px; font-weight:600; letter-spacing:.14em;
-  text-transform:uppercase; color:var(--ink-2);
-  background:var(--rack-700); border:1px solid var(--edge);
-  padding:2px 7px; border-radius:3px;
-}
-.name{font-size:16px; font-weight:700; letter-spacing:-.015em; margin:0; min-width:0;
-  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-.chip{
-  font-family:var(--f-mono); font-size:9.5px; font-weight:600; letter-spacing:.14em;
-  text-transform:uppercase; padding:3px 8px; border-radius:var(--pill);
-  border:1px solid var(--edge); color:var(--ink-3); background:var(--rack-750);
-}
-.chip[data-s="licensed"]{color:var(--sig-pvw); border-color:rgba(31,217,123,.32); background:rgba(31,217,123,.09)}
-.chip[data-s="unlicensed"]{color:var(--sig-warn); border-color:rgba(255,176,32,.32); background:rgba(255,176,32,.09)}
-.chip[data-s="blocked"]{color:var(--sig-pgm); border-color:rgba(255,43,61,.35); background:rgba(255,43,61,.1)}
+/* preview screen — sunken surface token */
+.screen{position:relative; margin-bottom:12px; border-radius:var(--tg-radius-md); overflow:hidden;
+  background:var(--tg-surface-sunken); border:1px solid var(--tg-border-3); aspect-ratio:16/9}
+.screen img{width:100%; height:100%; object-fit:contain; display:block}
 
-/* identity + link line */
-.ident{display:flex; align-items:center; gap:var(--s2); flex-wrap:wrap; margin-bottom:var(--s3); min-height:24px}
-.pid{
-  font-family:var(--f-mono); font-size:15px; font-weight:600; letter-spacing:.06em;
-  color:var(--ink); background:var(--rack-950); border:1px solid var(--edge);
-  padding:2px 9px; border-radius:var(--r1); cursor:pointer; user-select:all;
-  transition:border-color var(--t1) var(--e)
-}
-.pid:hover{border-color:var(--act)}
-.ident a{font-size:12px; font-weight:600}
-.warn{font-size:11.5px; color:#FF9AA2}
+/* mono data readout */
+.data{display:flex; flex-wrap:wrap; gap:2px 16px; font-family:var(--tg-font-mono); font-size:11px; opacity:.7;
+  padding:8px 0; border-top:1px solid var(--tg-border-2); border-bottom:1px solid var(--tg-border-2); margin-bottom:12px}
+.data b{opacity:1; font-weight:600; color:var(--tg-fg)}
+.data .em{color:var(--tg-link-fg)}
+.data .dim{opacity:.5}
 
-/* preview */
-.screen{
-  position:relative; margin:0 0 var(--s3); border-radius:var(--r2); overflow:hidden;
-  background:var(--rack-950); border:1px solid var(--edge-soft); aspect-ratio:16/9;
-}
-.screen img{width:100%; height:100%; object-fit:contain; display:block;
-  transition:opacity var(--t2) var(--e)}
-
-/* mono data strip — gear read-out */
-.data{
-  display:flex; flex-wrap:wrap; gap:var(--s1) var(--s4);
-  font-family:var(--f-mono); font-size:11.5px; color:var(--ink-2);
-  padding:var(--s2) 0; border-top:1px solid var(--edge-soft); border-bottom:1px solid var(--edge-soft);
-  margin-bottom:var(--s3);
-}
-.data b{color:var(--ink); font-weight:600}
-.data .dim{color:var(--ink-3)}
-.data .idle{color:var(--ink-3)}
-
-/* controls */
-.field{display:block; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase;
-  color:var(--ink-3); margin:0 0 5px}
-input[type=text],input[type=number],select{
-  width:100%; font-family:var(--f-mono); font-size:12.5px; color:var(--ink);
-  background:var(--rack-950); border:1px solid var(--edge); border-radius:var(--r1);
-  padding:8px 10px; transition:border-color var(--t1) var(--e);
-}
-input:hover,select:hover{border-color:#39405a}
-input:focus,select:focus{border-color:var(--act); outline:none}
-select{appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),linear-gradient(135deg,var(--ink-3) 50%,transparent 50%);
-  background-position:calc(100% - 15px) 50%,calc(100% - 10px) 50%; background-size:5px 5px,5px 5px; background-repeat:no-repeat; padding-right:28px}
-.row{display:flex; gap:var(--s2); flex-wrap:wrap}
+.field{display:block; font-size:9px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; opacity:.5;
+  color:var(--tg-link-fg); margin:0 0 5px}
+.row{display:flex; gap:8px; flex-wrap:wrap}
 .row>*{flex:1 1 130px; min-width:0}
-.acts{display:flex; gap:var(--s2); flex-wrap:wrap; margin-top:var(--s3)}
-.acts .grow{flex:1 1 auto}
-.sw{display:flex; align-items:center; gap:var(--s2); margin-top:var(--s3); font-size:12px; color:var(--ink-2)}
-.sw input{width:auto}
-.msg{min-height:16px; font-family:var(--f-mono); font-size:11px; color:var(--sig-pvw); margin-top:var(--s2)}
-.msg.err{color:var(--sig-warn)}
-.sep{height:1px; background:var(--edge-soft); margin:var(--s4) 0}
+.acts{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px}
+.acts>*{flex:1 1 auto}
+.sep{height:1px; background:var(--tg-border-2); margin:14px 0}
+.sw{display:flex; align-items:center; gap:8px; margin-top:12px}
+.msg{min-height:14px; font-family:var(--tg-font-mono); font-size:10px; margin-top:8px; color:rgb(var(--tg-success-rgb)); opacity:.9}
+.msg.err{color:rgb(var(--tg-warn-rgb))}
+tg-button{display:block}
+.acts tg-button{flex:1 1 auto}
 
-/* ---------- responsive ---------- */
-@media (max-width:900px){
-  .topbar{padding:var(--s3) var(--s4); gap:var(--s3); position:static}
-  .telemetry{order:3; flex-basis:100%; gap:var(--s4); overflow-x:auto; padding-bottom:2px;
-    -webkit-overflow-scrolling:touch; scrollbar-width:none}
-  .telemetry::-webkit-scrollbar{display:none}
-  .tel{min-width:64px}
-  main{padding:var(--s4); gap:var(--s4)}
-}
-@media (max-width:520px){
-  .wordmark{font-size:15px}
-  .host{padding-left:var(--s2)}
-  main{padding:var(--s3); gap:var(--s3)}
-  .body{padding:var(--s3)}
-  .name{font-size:15px}
-  .acts .btn{flex:1 1 auto}
-  .rail{flex-basis:4px}
-  .row>*{flex-basis:100%}          /* selects need full width or the labels clip */
-}
-@media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation:none!important; transition-duration:1ms!important}
-}
+@media (max-width:520px){ .row>*{flex-basis:100%} body{padding:16px 12px 60px} }
+@media (prefers-reduced-motion:reduce){ *,*::before,*::after{animation:none!important; transition-duration:1ms!important} }
 </style>
 </head>
 <body>
-<header class="topbar">
-  <div class="brand">
-    <span class="mark" aria-hidden="true"></span>
-    <span class="wordmark">webcg<span class="sep">·</span>ndi</span>
-    <span class="host" id="host" title="Click to set the NDI system name">—</span>
-  </div>
+<div class="wrap">
+  <tg-header title="webcg · ndi" subtitle="loading…" show-nav>
+    <a href="#" id="navAdd">+ Channel</a>
+    <a href="#" id="navName">System name</a>
+    <a href="/docs" target="_blank" rel="noreferrer">API docs</a>
+  </tg-header>
+
   <div class="telemetry" id="telemetry"></div>
-  <span class="spacer"></span>
-  <button class="btn btn-act" onclick="addChannel()">+ Channel</button>
-</header>
 
-<main id="grid"></main>
+  <main class="grid" id="grid"></main>
+</div>
 
-<script>
+<script type="module">
+import '/tg/index.js';
+
 let cache = [];
 
-/* ---------- data ---------- */
+/* ── data ── */
 async function refresh(){
   try{
     const s = await (await fetch('status')).json();
-    document.getElementById('host').textContent =
-      s.machineName + ' · ' + s.gl + ' · ' + s.channels.length + 'ch';
+    const hdr = document.querySelector('tg-header');
+    if (hdr){
+      const sub = hdr.querySelector('.tg-header-subtitle');
+      const txt = `${s.machineName} · ${s.gl} · ${s.channels.length} channel${s.channels.length===1?'':'s'}`;
+      if (sub) sub.textContent = txt; else hdr.setAttribute('subtitle', txt);
+    }
     renderTelemetry(s.system || {});
     cache = s.channels;
     renderGrid(s);
@@ -286,17 +166,16 @@ async function refresh(){
 }
 
 function meter(pct, hot){
-  return '<span class="meter'+(hot?' hot':'')+'"><i style="width:'+Math.max(0,Math.min(100,pct))+'%"></i></span>';
+  return `<span class="meter${hot?' hot':''}"><i style="width:${Math.max(0,Math.min(100,pct))}%"></i></span>`;
 }
 function renderTelemetry(sy){
   const cores = (sy.cpuPercent||0)/100, nCores = sy.cores||1;
   const net = sy.net||{}, ndi = sy.ndiTotalMbps||0;
   const parts = [];
   parts.push(`<div class="tel"><span class="tel-k">CPU</span><span class="tel-v">${cores.toFixed(1)}<i>/${nCores}</i></span>${meter(cores/nCores*100)}</div>`);
-  parts.push(`<div class="tel"><span class="tel-k">Memory</span><span class="tel-v">${(sy.memMB||0)}<i>MB</i></span>${meter((sy.memMB||0)/8000*100)}</div>`);
-  for(const g of (sy.gpus||[])){
+  parts.push(`<div class="tel"><span class="tel-k">Memory</span><span class="tel-v">${sy.memMB||0}<i>MB</i></span>${meter((sy.memMB||0)/8000*100)}</div>`);
+  for(const g of (sy.gpus||[]))
     parts.push(`<div class="tel"><span class="tel-k">GPU${g.index}</span><span class="tel-v">${g.util}<i>%</i></span>${meter(g.util)}</div>`);
-  }
   parts.push(`<div class="tel"><span class="tel-k">NDI out</span><span class="tel-v">${ndi}<i>Mb/s</i></span>${meter(ndi/10000*100, ndi>7000)}</div>`);
   parts.push(`<div class="tel"><span class="tel-k">NIC tx</span><span class="tel-v">${Math.round(net.txMbps||0)}<i>Mb/s</i></span>${meter((net.txMbps||0)/10000*100)}</div>`);
   document.getElementById('telemetry').innerHTML = parts.join('');
@@ -312,219 +191,195 @@ function renderGrid(s){
   }
 }
 
-/* ---------- card ---------- */
+/* ── card (uses the .glass-card class directly so live updates don't trip the
+      custom element's one-shot render; all controls are TG components/classes) ── */
 function buildCard(ch){
-  const el = document.createElement('article');
-  el.className = 'ch'; el.dataset.id = ch.id;
+  const el = document.createElement('div');
+  el.className = 'glass-card ch-card'; el.dataset.id = ch.id;
   el.innerHTML = `
     <span class="rail" data-state="off"></span>
-    <div class="body">
-      <div class="onair-bar">On air</div>
-      <div class="head">
-        <span class="tape">${ch.id}</span>
-        <h2 class="name"></h2>
-        <span class="chip" data-s=""></span>
-      </div>
-      <div class="ident"></div>
-      <figure class="screen"><img alt="channel preview"></figure>
-      <div class="data"></div>
-      <label class="field" for="u-${ch.id}">Source URL — applies live</label>
-      <input type="text" class="f_url" id="u-${ch.id}">
-      <div class="acts">
-        <button class="btn btn-act grow" data-a="url">Set URL</button>
-        <button class="btn" data-a="reload">Reload</button>
-        <button class="btn" data-a="click" title="inject a real click at frame centre">Click centre</button>
-      </div>
-      <div class="sep"></div>
-      <div class="row">
-        <div><label class="field">Resolution</label><select class="f_res">
+    <div class="ch-head">
+      <span class="ch-tag">${ch.id}</span>
+      <span class="ch-name"></span>
+      <span class="badge" data-s="">—</span>
+    </div>
+    <div class="ident"></div>
+    <div class="screen"><img alt="channel preview"></div>
+    <div class="data"></div>
+
+    <label class="field">Source URL — applies live</label>
+    <div class="row">
+      <input class="glass-input f_url" style="flex:3 1 200px" placeholder="https://…">
+      <tg-button data-a="url" variant="primary" icon="→" style="flex:1 1 90px">Set</tg-button>
+    </div>
+    <div class="acts">
+      <tg-button data-a="reload" icon="↻">Reload</tg-button>
+      <tg-button data-a="click" icon="◉">Click centre</tg-button>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="row">
+      <div><label class="field">Resolution</label>
+        <select class="glass-select f_res">
           <option value="1280x720">720p · 1280×720</option>
           <option value="1920x1080">1080p · 1920×1080</option>
           <option value="2560x1440">1440p · 2560×1440</option>
           <option value="3840x2160">4K · 3840×2160</option>
-          <option value="custom">Custom…</option>
-        </select></div>
-        <div><label class="field">Frame rate</label><select class="f_fps">
+        </select>
+      </div>
+      <div><label class="field">Frame rate</label>
+        <select class="glass-select f_fps">
           <option value="24">24 fps</option><option value="25">25 fps</option>
           <option value="30">30 fps</option><option value="50">50 fps</option>
           <option value="60">60 fps</option>
-        </select></div>
+        </select>
       </div>
-      <div class="row customres" style="display:none; margin-top:8px">
-        <div><label class="field">Width</label><input type="number" class="f_cw" min="16" max="7680"></div>
-        <div><label class="field">Height</label><input type="number" class="f_ch" min="16" max="4320"></div>
-      </div>
-      <div style="margin-top:12px"><label class="field">NDI name</label><input type="text" class="f_name"></div>
-      <label class="sw"><input type="checkbox" class="f_alpha"> Alpha — fill + key</label>
-      <div class="acts">
-        <button class="btn btn-act grow" data-a="apply">Apply &amp; restart</button>
-        <button class="btn btn-danger" data-a="del">Delete</button>
-      </div>
-      <div class="msg"></div>
-    </div>`;
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div><label class="field">NDI name</label><input class="glass-input f_name"></div>
+    </div>
+    <div class="sw"><tg-checkbox class="f_alpha" label="Alpha — fill + key"></tg-checkbox></div>
+
+    <div class="acts">
+      <tg-button data-a="apply" variant="primary" icon="✓">Apply &amp; restart</tg-button>
+      <tg-button data-a="del" icon="✕">Delete</tg-button>
+    </div>
+    <div class="msg"></div>`;
 
   const id = ch.id, msg = el.querySelector('.msg');
-  const v = sel => el.querySelector(sel).value;
-  const res = el.querySelector('.f_res'), crow = el.querySelector('.customres');
-  res.onchange = () => { crow.style.display = res.value === 'custom' ? '' : 'none'; };
+  const val = sel => el.querySelector(sel).value;
 
-  el.querySelector('[data-a="url"]').onclick = async () => {
-    await post('channels/'+id+'/url', {url:v('.f_url')}); say(msg,'URL set.');
-  };
-  el.querySelector('[data-a="reload"]').onclick = async () => {
-    await post('channels/'+id+'/reload'); say(msg,'Reloaded.');
-  };
-  el.querySelector('[data-a="click"]').onclick = async () => {
-    await post('channels/'+id+'/input', {type:'click'}); say(msg,'Click injected at centre.');
-  };
-  el.querySelector('[data-a="apply"]').onclick = async () => {
-    let w,h;
-    if(res.value==='custom'){ w=+v('.f_cw'); h=+v('.f_ch'); }
-    else { [w,h] = res.value.split('x').map(Number); }
-    if(!w||!h||w<16||h<16){ say(msg,'Enter a valid custom size.',true); return; }
-    say(msg,'Restarting…');
-    await post('channels/'+id, {width:w,height:h,fps:+v('.f_fps'),name:v('.f_name'),
-      alpha:el.querySelector('.f_alpha').checked});
-    say(msg,'Applied.');
-  };
-  el.querySelector('[data-a="del"]').onclick = async () => {
-    if(confirm('Delete '+id+'? Its NDI output stops immediately.')){
-      await post('channels/'+id+'/delete'); el.remove();
+  // delegated tg-button clicks
+  el.addEventListener('tg-click', async (e)=>{
+    const btn = e.target.closest('tg-button'); if(!btn) return;
+    const a = btn.dataset.a;
+    if(a==='url'){ await post('channels/'+id+'/url',{url:val('.f_url')}); say(msg,'URL set.'); }
+    else if(a==='reload'){ await post('channels/'+id+'/reload'); say(msg,'Reloaded.'); }
+    else if(a==='click'){ await post('channels/'+id+'/input',{type:'click'}); say(msg,'Click injected at centre.'); }
+    else if(a==='del'){ if(confirm('Delete '+id+'? Its NDI output stops immediately.')){ await post('channels/'+id+'/delete'); el.remove(); } }
+    else if(a==='apply'){
+      const [w,h] = val('.f_res').split('x').map(Number);
+      say(msg,'Restarting…');
+      await post('channels/'+id, {width:w,height:h,fps:+val('.f_fps'),name:val('.f_name'),
+        alpha:el.querySelector('.f_alpha').checked});
+      say(msg,'Applied.');
     }
-  };
+  });
   return el;
 }
 
-function say(el, text, isErr){
-  el.className = 'msg' + (isErr ? ' err' : ''); el.textContent = text;
-  clearTimeout(el._t); el._t = setTimeout(()=>{ el.textContent=''; }, 3000);
-}
+function say(el,text,isErr){ el.className='msg'+(isErr?' err':''); el.textContent=text;
+  clearTimeout(el._t); el._t=setTimeout(()=>{ el.textContent=''; },3000); }
 
 function updateCard(el, ch){
-  const p = ch.page || {}, t = ch.tally || {};
+  const p = ch.page||{}, t = ch.tally||{};
   const onair = !!t.program;
 
-  /* tally rail — the signature */
   const rail = el.querySelector('.rail');
-  rail.dataset.state = onair ? 'pgm' : (t.preview ? 'pvw' : (ch.conn > 0 ? 'live' : 'off'));
-  rail.setAttribute('title', onair ? 'On program' : (t.preview ? 'On preview'
-    : (ch.conn > 0 ? ch.conn+' receiver(s) connected' : 'No receivers')));
+  rail.dataset.state = onair ? 'pgm' : (t.preview ? 'pvw' : (ch.conn>0 ? 'live' : 'off'));
+  rail.title = onair ? 'On program' : (t.preview ? 'On preview' : (ch.conn>0 ? ch.conn+' receiver(s)' : 'No receivers'));
   el.classList.toggle('onair', onair);
+  el.querySelector('.ch-name').textContent = ch.name;
 
-  el.querySelector('.name').textContent = ch.name;
-
-  /* player state */
-  const chip = el.querySelector('.chip'), ident = el.querySelector('.ident');
-  let origin = p.origin || ''; if(!origin){ try{ origin = new URL(ch.url).origin; }catch(e){} }
+  const badge = el.querySelector('.badge'), ident = el.querySelector('.ident');
+  let origin = p.origin||''; if(!origin){ try{ origin = new URL(ch.url).origin; }catch(e){} }
   const st = p.state;
-  if(st === 'blocked'){
-    chip.dataset.s='blocked'; chip.textContent='Blocked';
-    const bid = (p.blocked&&p.blocked.id)||p.playerId||'';
-    ident.innerHTML = (bid?`<span class="pid">${bid}</span>`:'')
-      + `<span class="warn">ID already in use in another browser</span>`
-      + `<button class="btn btn-sm" data-c="retry connection">Retry</button>`
-      + `<button class="btn btn-sm" data-c="start as unlicensed">Start unlicensed</button>`;
-  } else if(st === 'licensed' && p.playerId){
-    chip.dataset.s='licensed'; chip.textContent='Licensed';
-    const url = origin + '/library?id=' + encodeURIComponent(p.playerId);
-    ident.innerHTML = (p.playerName?`<span class="tape">${p.playerName}</span>`:'')
-      + `<span class="pid" title="click to copy">${p.playerId}</span>`
-      + `<a href="${url}" target="_blank" rel="noreferrer">Open library »</a>`
-      + `<button class="btn btn-sm" data-copy="${url}">Copy link</button>`;
-  } else if(st === 'unlicensed' && p.playerId){
-    chip.dataset.s='unlicensed'; chip.textContent='Unlicensed';
-    const url = origin + '/player-admin/setup/' + encodeURIComponent(p.playerId);
-    ident.innerHTML = `<span class="pid" title="click to copy">${p.playerId}</span>`
-      + `<a href="${url}" target="_blank" rel="noreferrer">Register player »</a>`
-      + `<button class="btn btn-sm" data-copy="${url}">Copy link</button>`;
-  } else if(st === 'connecting'){
-    chip.dataset.s=''; chip.textContent='Connecting';
-    ident.innerHTML = `<span class="warn" style="color:var(--ink-3)">Waiting for the player to connect</span>`;
-  } else { chip.dataset.s=''; chip.textContent='—'; ident.innerHTML=''; }
+  if(st==='blocked'){
+    badge.dataset.s='blocked'; badge.textContent='Blocked';
+    const bid=(p.blocked&&p.blocked.id)||p.playerId||'';
+    ident.innerHTML=(bid?`<span class="pid">${bid}</span>`:'')
+      +`<span class="warn">ID in use in another browser</span>`
+      +`<button class="stab" data-c="retry connection">Retry</button>`
+      +`<button class="stab" data-c="start as unlicensed">Start unlicensed</button>`;
+  } else if(st==='licensed' && p.playerId){
+    badge.dataset.s='licensed'; badge.textContent='Licensed';
+    const url=origin+'/library?id='+encodeURIComponent(p.playerId);
+    ident.innerHTML=(p.playerName?`<span class="ch-tag">${p.playerName}</span>`:'')
+      +`<span class="pid" title="click to copy">${p.playerId}</span>`
+      +`<a class="stab" href="${url}" target="_blank" rel="noreferrer">Open library</a>`
+      +`<button class="stab" data-copy="${url}">Copy link</button>`;
+  } else if(st==='unlicensed' && p.playerId){
+    badge.dataset.s='unlicensed'; badge.textContent='Unlicensed';
+    const url=origin+'/player-admin/setup/'+encodeURIComponent(p.playerId);
+    ident.innerHTML=`<span class="pid" title="click to copy">${p.playerId}</span>`
+      +`<a class="stab" href="${url}" target="_blank" rel="noreferrer">Register player</a>`
+      +`<button class="stab" data-copy="${url}">Copy link</button>`;
+  } else if(st==='connecting'){
+    badge.dataset.s=''; badge.textContent='Connecting';
+    ident.innerHTML=`<span class="warn" style="opacity:.5">Waiting for the player to connect</span>`;
+  } else { badge.dataset.s=''; badge.textContent='—'; ident.innerHTML=''; }
 
   const pid = ident.querySelector('.pid');
-  if(pid) pid.onclick = () => copyText(pid.textContent, pid);
-  ident.querySelectorAll('[data-copy]').forEach(b=>{ b.onclick = ()=>copyText(b.dataset.copy,b,'Copy link'); });
-  ident.querySelectorAll('[data-c]').forEach(b=>{ b.onclick = async ()=>{
+  if(pid) pid.onclick=()=>copyText(pid.textContent,pid);
+  ident.querySelectorAll('[data-copy]').forEach(b=>{ b.onclick=()=>copyText(b.dataset.copy,b,'Copy link'); });
+  ident.querySelectorAll('[data-c]').forEach(b=>{ b.onclick=async()=>{
     const o=b.textContent; b.textContent='…';
-    const r = await fetch('channels/'+ch.id+'/click',{method:'POST',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({label:b.dataset.c})});
+    const r=await fetch('channels/'+ch.id+'/click',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:b.dataset.c})});
     let j={}; try{ j=await r.json(); }catch(e){}
-    b.textContent = j.clicked ? 'Sent' : 'Not found'; setTimeout(()=>b.textContent=o,1400);
+    b.textContent=j.clicked?'Sent':'Not found'; setTimeout(()=>b.textContent=o,1400);
   };});
 
-  /* mono data strip */
   const throttled = ch.targetFps && ch.targetFps < ch.fps;
   const bw = ch.conn>0
-    ? `<span><b>${ch.ndiOutMbps}</b> Mb/s <span class="dim">· ${ch.conn} rcv</span></span>`
-    : `<span class="idle">idle · 0 Mb/s <span class="dim">(${ch.ndiPerStreamMbps} if watched)</span></span>`;
+    ? `<span><b class="em">${ch.ndiOutMbps}</b> Mb/s <span class="dim">· ${ch.conn} rcv</span></span>`
+    : `<span class="dim">idle · 0 Mb/s (${ch.ndiPerStreamMbps} if watched)</span>`;
   el.querySelector('.data').innerHTML =
       `<span><b>${ch.width}</b>×<b>${ch.height}</b></span>`
     + `<span><b>${ch.fpsSent}</b> fps ${throttled?`<span class="dim">· adaptive ${ch.targetFps}</span>`:`<span class="dim">/ ${ch.fps}</span>`}</span>`
     + bw
     + `<span class="dim">${ch.alpha?'BGRA · alpha':'BGRX · opaque'}</span>`;
 
-  /* preview */
   const img = el.querySelector('.screen img');
-  img.src = 'preview.jpg?id=' + ch.id + '&t=' + Date.now();
+  img.src = 'preview.jpg?id='+ch.id+'&t='+Date.now();
 
-  /* inputs — never clobber what the operator is typing */
-  const a = document.activeElement, has = s => el.contains(a) && a.classList.contains(s.slice(1));
-  if(!has('.f_url'))  el.querySelector('.f_url').value = ch.url;
-  if(!has('.f_name')) el.querySelector('.f_name').value = ch.name;
-  const rs = el.querySelector('.f_res');
-  if(rs.value !== 'custom'){
-    if(!has('.f_res')) setSelect(rs, ch.width+'x'+ch.height, ch.width+'×'+ch.height+' · custom');
-    if(!has('.f_cw')) el.querySelector('.f_cw').value = ch.width;
-    if(!has('.f_ch')) el.querySelector('.f_ch').value = ch.height;
-  }
-  if(!has('.f_fps')) setSelect(el.querySelector('.f_fps'), String(ch.fps), ch.fps+' fps · custom');
-  if(a !== el.querySelector('.f_alpha')) el.querySelector('.f_alpha').checked = ch.alpha;
+  // never clobber a field the operator is editing
+  const a = document.activeElement, editing = s => el.contains(a) && a.classList.contains(s.slice(1));
+  if(!editing('.f_url'))  el.querySelector('.f_url').value = ch.url;
+  if(!editing('.f_name')) el.querySelector('.f_name').value = ch.name;
+  if(!editing('.f_res'))  setSelect(el.querySelector('.f_res'), ch.width+'x'+ch.height, ch.width+'×'+ch.height);
+  if(!editing('.f_fps'))  setSelect(el.querySelector('.f_fps'), String(ch.fps), ch.fps+' fps');
+  const alpha = el.querySelector('.f_alpha');
+  if(alpha && document.activeElement!==alpha && alpha.checked!==!!ch.alpha) alpha.checked = !!ch.alpha;
 }
 
-/* ---------- helpers ---------- */
+/* ── helpers ── */
 async function post(path, body){
-  const r = await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(body||{})});
+  const r = await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
   return r.ok;
 }
 function copyText(v, el, restore){
-  const orig = restore || v;
-  const done = () => { el.textContent='Copied'; setTimeout(()=>el.textContent=orig,900); };
+  const orig = restore || (el.textContent);
+  const done = ()=>{ el.textContent='Copied'; setTimeout(()=>el.textContent=orig,900); };
   if(navigator.clipboard) navigator.clipboard.writeText(v).then(done).catch(()=>{});
-  else { const ta=document.createElement('textarea'); ta.value=v; document.body.appendChild(ta);
-    ta.select(); try{ document.execCommand('copy'); done(); }catch(e){} ta.remove(); }
+  else { const ta=document.createElement('textarea'); ta.value=v; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); done(); }catch(e){} ta.remove(); }
 }
 function setSelect(sel, value, customLabel){
   if(![...sel.options].some(o=>o.value===value)){
-    const o=document.createElement('option'); o.value=value; o.textContent=customLabel||value; sel.appendChild(o);
+    const o=document.createElement('option'); o.value=value; o.textContent=(customLabel||value)+' · custom'; sel.appendChild(o);
   }
   sel.value = value;
 }
 async function addChannel(){
-  const url = prompt('Page URL for the new channel:','https://example.com');
-  if(!url) return;
-  const name = prompt('NDI name:','WebCG-'+(cache.length+1));
-  if(!name) return;
+  const url = prompt('Page URL for the new channel:','https://example.com'); if(!url) return;
+  const name = prompt('NDI name:','WebCG-'+(cache.length+1)); if(!name) return;
   await post('channels',{url,name,width:1920,height:1080,fps:30,alpha:false});
   refresh();
 }
-
-/* The NDI system name — the "MACHINE" half of every source (MACHINE · source).
-   libndi latches it at startup, so a change needs an engine restart to apply. */
+/* NDI system name — the "MACHINE" half of every source; libndi latches it at
+   startup, so a change needs an engine restart. */
 async function editSystemName(){
-  let cur = {machineName:'', active:''};
+  let cur={machineName:'',active:''};
   try{ cur = await (await fetch('settings')).json(); }catch(e){}
-  const name = prompt(
-    'NDI system name — the prefix on every source, e.g. "'+(cur.active||'TOWER')+' (CG-1)".\n'
-    + 'Leave blank to use the host name.', cur.machineName || '');
+  const name = prompt(`NDI system name — the prefix on every source, e.g. "${cur.active||'TOWER'} (CG-1)".\nLeave blank to use the host name.`, cur.machineName||'');
   if(name===null) return;
   await post('settings',{machineName:name});
-  if(confirm('Saved. Restart the engine now to apply it?\n\nAll NDI outputs blip for a few seconds.')){
-    await post('restart');
-  }
+  if(confirm('Saved. Restart the engine now to apply it?\n\nAll NDI outputs blip for a few seconds.')) await post('restart');
 }
-document.getElementById('host').onclick = editSystemName;
+
+document.getElementById('navAdd').addEventListener('click', e=>{ e.preventDefault(); addChannel(); });
+document.getElementById('navName').addEventListener('click', e=>{ e.preventDefault(); editSystemName(); });
 
 setInterval(refresh, 2000); refresh();
 </script>
