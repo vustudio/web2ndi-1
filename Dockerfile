@@ -39,6 +39,7 @@ RUN npx node-gyp rebuild \
       --arch=x64 --dist-url=https://electronjs.org/headers \
  && test -f build/Release/ndi_sender.node
 COPY src ./src
+COPY openapi.yaml ./
 COPY entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 

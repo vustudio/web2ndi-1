@@ -1,0 +1,425 @@
+openapi: 3.1.0
+
+info:
+  title: webcg-ndi control API
+  version: 2.0.0
+  description: |
+    REST control surface for **webcg-ndi** — a service that renders headless web
+    pages and publishes each as a native NDI source. One process hosts N
+    independent *channels*; each channel is its own offscreen browser rendered to
+    its own NDI output.
+
+    The control panel (`GET /`) is a same-origin single-page app that drives this
+    same API. Every endpoint here is scriptable directly (curl, automation) — the
+    UI has no privileged path the API lacks.
+
+    **Auth:** none. Plain HTTP. Access is controlled at the network layer; put it
+    behind a reverse proxy if it needs authentication.
+  license:
+    name: Proprietary — Vū Studio
+
+servers:
+  - url: http://10.101.50.60
+    description: Tower deployment (ipvlan br0, port 80)
+  - url: http://{host}:{port}
+    description: Any deployment
+    variables:
+      host: { default: localhost }
+      port: { default: "8099", description: CTRL_PORT }
+
+tags:
+  - name: system
+    description: Whole-service status and settings
+  - name: channels
+    description: Create, configure, and drive individual channels
+
+paths:
+  /:
+    get:
+      tags: [system]
+      summary: The web control panel
+      operationId: getPanel
+      responses:
+        "200":
+          description: HTML single-page app
+          content:
+            text/html:
+              schema: { type: string }
+
+  /openapi.yaml:
+    get:
+      tags: [system]
+      summary: This API specification
+      operationId: getSpec
+      responses:
+        "200":
+          description: The OpenAPI document
+          content:
+            application/yaml:
+              schema: { type: string }
+
+  /status:
+    get:
+      tags: [system]
+      summary: Full snapshot — system telemetry and every channel
+      operationId: getStatus
+      responses:
+        "200":
+          description: Current state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Status" }
+
+  /settings:
+    get:
+      tags: [system]
+      summary: App-level settings (NDI machine name)
+      operationId: getSettings
+      responses:
+        "200":
+          description: Current and active machine name
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettingsView" }
+    post:
+      tags: [system]
+      summary: Save settings; optionally restart to apply
+      description: |
+        The NDI machine name is latched by libndi at startup, so a change only
+        takes effect after an engine restart. Pass `restart: true` to restart
+        immediately (all NDI outputs blip for a few seconds), or restart later.
+      operationId: postSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SettingsPatch" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettingsResult" }
+
+  /restart:
+    post:
+      tags: [system]
+      summary: Restart the engine
+      description: |
+        Exits the process; under the container's restart policy it comes straight
+        back, applying any pending settings. All NDI outputs blip briefly.
+      operationId: postRestart
+      responses:
+        "200":
+          description: Restart scheduled
+          content:
+            text/plain: { schema: { type: string, example: restarting } }
+
+  /preview.jpg:
+    get:
+      tags: [channels]
+      summary: Latest rendered frame of a channel, as JPEG
+      operationId: getPreview
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema: { type: string, example: ch1 }
+      responses:
+        "200":
+          description: JPEG frame
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+        "503":
+          description: No frame available yet for this channel
+
+  /channels:
+    post:
+      tags: [channels]
+      summary: Add a channel
+      description: |
+        Unset fields take defaults (1920×1080, 30 fps, alpha on). A new `id`
+        (`chN`) is assigned automatically. The channel starts immediately.
+      operationId: addChannel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChannelPatch" }
+      responses:
+        "200":
+          description: The created channel config
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChannelConfig" }
+
+  /channels/{id}:
+    post:
+      tags: [channels]
+      summary: Patch a channel's config (restarts it)
+      description: |
+        Any subset of channel fields. Changing resolution / fps / name / alpha
+        rebuilds the window and NDI sender. A URL-only change is applied live —
+        but prefer `POST /channels/{id}/url` for that intent.
+      operationId: patchChannel
+      parameters: [{ $ref: "#/components/parameters/ChannelId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChannelPatch" }
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+        "404": { $ref: "#/components/responses/NoChannel" }
+
+  /channels/{id}/url:
+    post:
+      tags: [channels]
+      summary: Swap the rendered page live (no restart)
+      operationId: setChannelUrl
+      parameters: [{ $ref: "#/components/parameters/ChannelId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri, example: "https://example.com" }
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+        "404": { $ref: "#/components/responses/NoChannel" }
+
+  /channels/{id}/reload:
+    post:
+      tags: [channels]
+      summary: Reload the current page
+      operationId: reloadChannel
+      parameters: [{ $ref: "#/components/parameters/ChannelId" }]
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+        "404": { $ref: "#/components/responses/NoChannel" }
+
+  /channels/{id}/input:
+    post:
+      tags: [channels]
+      summary: Inject a real OS-level click or keypress
+      description: |
+        Unlike a synthetic DOM `.click()`, this satisfies "user gesture"
+        requirements and works on canvas/WebGL UIs. A click defaults to the
+        centre of the frame if x/y are omitted.
+      operationId: injectInput
+      parameters: [{ $ref: "#/components/parameters/ChannelId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InputEvent" }
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+        "404":
+          description: No channel, or no live window
+        "500":
+          description: Input injection failed
+
+  /channels/{id}/click:
+    post:
+      tags: [channels]
+      summary: Click a page element by its label
+      description: Finds a button/link/`[role=button]` whose text contains the label (case-insensitive) and clicks it.
+      operationId: clickByLabel
+      parameters: [{ $ref: "#/components/parameters/ChannelId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label]
+              properties:
+                label: { type: string, example: "Retry Connection" }
+      responses:
+        "200":
+          description: Whether a matching element was clicked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clicked: { type: boolean }
+        "404": { $ref: "#/components/responses/NoChannel" }
+
+  /channels/{id}/delete:
+    post:
+      tags: [channels]
+      summary: Remove a channel (its NDI output stops immediately)
+      operationId: deleteChannel
+      parameters: [{ $ref: "#/components/parameters/ChannelId" }]
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+        "404": { $ref: "#/components/responses/NoChannel" }
+
+components:
+  parameters:
+    ChannelId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, example: ch1 }
+
+  responses:
+    Ok:
+      description: Success
+      content:
+        text/plain: { schema: { type: string, example: ok } }
+    NoChannel:
+      description: No channel with that id
+      content:
+        text/plain: { schema: { type: string, example: no channel } }
+
+  schemas:
+    ChannelConfig:
+      type: object
+      description: The persisted configuration of a channel.
+      properties:
+        id: { type: string, readOnly: true, example: ch1 }
+        url: { type: string, format: uri, example: "https://rnd2.vu.studio/player?wallid=sienna" }
+        width: { type: integer, minimum: 16, maximum: 7680, example: 1920 }
+        height: { type: integer, minimum: 16, maximum: 4320, example: 1080 }
+        fps: { type: integer, minimum: 1, maximum: 60, example: 30 }
+        name: { type: string, description: NDI source name, example: CG-1 }
+        alpha: { type: boolean, description: true = BGRA fill+key, false = BGRX opaque, example: true }
+
+    ChannelPatch:
+      type: object
+      description: Any subset of channel fields; unknown fields are ignored, values are clamped.
+      properties:
+        url: { type: string, format: uri }
+        width: { type: integer, minimum: 16, maximum: 7680 }
+        height: { type: integer, minimum: 16, maximum: 4320 }
+        fps: { type: integer, minimum: 1, maximum: 60 }
+        name: { type: string }
+        alpha: { type: boolean }
+
+    Channel:
+      description: A channel's config plus its live runtime state (as returned by /status).
+      allOf:
+        - $ref: "#/components/schemas/ChannelConfig"
+        - type: object
+          properties:
+            fpsActual: { type: integer, description: frames painted in the last second, example: 30 }
+            fpsSent: { type: integer, description: frames sent to NDI in the last second, example: 30 }
+            targetFps: { type: integer, description: current adaptive target (<= fps), example: 10 }
+            connected: { type: boolean, description: NDI sender is up }
+            conn: { type: [integer, "null"], description: number of connected receivers }
+            tally:
+              oneOf:
+                - $ref: "#/components/schemas/Tally"
+                - type: "null"
+            audioSent: { type: integer, description: NDI audio blocks sent }
+            audioDiag: { description: audio-tap diagnostics (null unless CG_AUDIO=1), type: [object, "null"] }
+            page:
+              oneOf:
+                - $ref: "#/components/schemas/PlayerStatus"
+                - type: "null"
+            cpu: { type: [integer, "null"], description: renderer CPU %, }
+            memMB: { type: [integer, "null"], description: renderer working set (MB) }
+            ndiPerStreamMbps: { type: integer, description: estimated per-receiver bandwidth }
+            ndiOutMbps: { type: integer, description: estimated total NDI egress (perStream × receivers) }
+
+    Tally:
+      type: object
+      properties:
+        program: { type: boolean }
+        preview: { type: boolean }
+
+    PlayerStatus:
+      type: object
+      description: Player identity/state scraped from the rendered page (Vū player).
+      properties:
+        playerId: { type: [string, "null"] }
+        playerName: { type: [string, "null"] }
+        licensed: { type: boolean }
+        connected: { type: [boolean, "null"], description: is a user connected }
+        state:
+          type: string
+          enum: [licensed, unlicensed, blocked, connecting]
+        origin: { type: string, format: uri }
+        blocked:
+          type: [object, "null"]
+          properties:
+            title: { type: string }
+            id: { type: [string, "null"] }
+            msg: { type: string }
+        actions: { type: array, items: { type: string }, description: visible button/link labels }
+        title: { type: string }
+        perf: { type: [object, "null"], description: playback health (video dims, dropped frames, diagnostics) }
+
+    Status:
+      type: object
+      properties:
+        gl: { type: string, enum: [egl, swiftshader], description: render backend }
+        machineName: { type: string, description: NDI machine name currently advertised, example: TOWER }
+        system: { $ref: "#/components/schemas/SystemStats" }
+        channels:
+          type: array
+          items: { $ref: "#/components/schemas/Channel" }
+
+    SystemStats:
+      type: object
+      properties:
+        cpuPercent: { type: integer, description: container CPU %, example: 549 }
+        cores: { type: integer, example: 64 }
+        memMB: { type: integer }
+        gpus:
+          type: array
+          items:
+            type: object
+            properties:
+              index: { type: integer }
+              util: { type: integer, description: GPU utilisation % }
+              memUsed: { type: integer }
+              memTotal: { type: integer }
+        net:
+          type: object
+          properties:
+            rxMbps: { type: number }
+            txMbps: { type: number }
+            ifaces:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: { type: string }
+                  rxMbps: { type: number }
+                  txMbps: { type: number }
+        ndiTotalMbps: { type: integer, description: estimated total NDI egress across channels }
+
+    SettingsView:
+      type: object
+      properties:
+        machineName: { type: string, description: saved override ("" = use hostname) }
+        active: { type: string, description: machine name libndi is currently advertising }
+
+    SettingsPatch:
+      type: object
+      properties:
+        machineName: { type: string, description: "override, or \"\" to use the hostname; sanitized to [A-Za-z0-9 _.-], max 32" }
+        restart: { type: boolean, description: restart the engine now to apply }
+
+    SettingsResult:
+      type: object
+      properties:
+        machineName: { type: string }
+        active: { type: string }
+        pendingRestart: { type: boolean, description: true if a restart is needed to apply the change }
+
+    InputEvent:
+      type: object
+      properties:
+        type: { type: string, enum: [click, key], default: click }
+        key: { type: string, description: "for type=key (default Enter)", example: Enter }
+        x: { type: integer, description: "for type=click; defaults to frame centre" }
+        y: { type: integer, description: "for type=click; defaults to frame centre" }

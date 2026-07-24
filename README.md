@@ -66,13 +66,24 @@ Open **`http://<host>:8099/`** (port set by `CTRL_PORT`). It gives you:
 - **Output settings** — width / height / fps / NDI name / alpha; **Apply & restart** does a quick render+NDI restart (like the node's static controls)
 - **Status** — resolution, target vs actual fps, NDI name, GL mode
 
-REST API (same endpoints the panel uses):
+The panel is a same-origin SPA driving the REST API below; every endpoint is
+scriptable directly. The full contract is an **OpenAPI 3.1 spec** in
+[`openapi.yaml`](openapi.yaml), served live at **`/openapi.yaml`** with an
+interactive **Swagger UI at `/docs`** (its "Try it out" calls hit this server).
+
 ```
-GET  /status                       → JSON of current settings
-GET  /preview.jpg                  → latest frame as JPEG
-POST /url     {"url": "..."}       → switch page live
-POST /reload                       → reload page
-POST /config  {"width","height","fps","ndiName","alpha"}  → apply + restart
+GET  /status                          → system telemetry + every channel
+GET  /settings                        → NDI machine name
+POST /settings   {machineName,restart}→ set the machine name (restart to apply)
+POST /restart                         → restart the engine
+GET  /preview.jpg?id=chN              → latest frame as JPEG
+POST /channels   {url,name,width,…}   → add a channel
+POST /channels/:id  {width,height,…}  → apply config (restarts the channel)
+POST /channels/:id/url    {url}       → switch page live
+POST /channels/:id/reload             → reload the page
+POST /channels/:id/input  {type,x,y}  → inject a real click / keypress
+POST /channels/:id/click  {label}     → click a page element by label
+POST /channels/:id/delete             → remove the channel
 ```
 `CG_GL` (GPU vs software) is fixed for the process lifetime — change it via env + container restart, not the panel.
 

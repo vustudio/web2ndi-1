@@ -67,6 +67,27 @@ function start(deps) {
         }
         return;
       }
+      if (req.method === 'GET' && (pathname === '/docs' || pathname === '/docs/')) {
+        // Swagger UI (loaded from CDN) pointed at our own spec. Same-origin, so
+        // its "Try it out" calls hit this server directly.
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>webcg·ndi API</title>
+<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+<style>body{margin:0}</style></head><body><div id="ui"></div>
+<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>window.ui=SwaggerUIBundle({url:'openapi.yaml',dom_id:'#ui',deepLinking:true});</script>
+</body></html>`);
+        return;
+      }
+      if (req.method === 'GET' && pathname === '/openapi.yaml') {
+        try {
+          res.writeHead(200, { 'Content-Type': 'application/yaml' });
+          res.end(fs.readFileSync(path.join(__dirname, '..', 'openapi.yaml')));
+        } catch (e) { res.writeHead(404); res.end('spec not bundled'); }
+        return;
+      }
       if (req.method === 'GET' && pathname === '/status') {
         let appMetrics = [];
         try { appMetrics = app.getAppMetrics(); } catch (e) { /* not ready */ }
