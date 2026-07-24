@@ -85,8 +85,10 @@ a:hover{text-decoration:underline}
 .host{
   font-family:var(--f-mono); font-size:11px; color:var(--ink-3);
   letter-spacing:.08em; text-transform:uppercase; padding-left:var(--s3);
-  border-left:1px solid var(--edge); white-space:nowrap;
+  border-left:1px solid var(--edge); white-space:nowrap; cursor:pointer;
+  transition:color var(--t1) var(--e);
 }
+.host:hover{color:var(--ink-2)}
 .spacer{flex:1 1 auto}
 
 /* telemetry: equipment read-out, mono and column-aligned */
@@ -259,7 +261,7 @@ select{appearance:none; background-image:linear-gradient(45deg,transparent 50%,v
   <div class="brand">
     <span class="mark" aria-hidden="true"></span>
     <span class="wordmark">webcg<span class="sep">·</span>ndi</span>
-    <span class="host" id="host">—</span>
+    <span class="host" id="host" title="Click to set the NDI system name">—</span>
   </div>
   <div class="telemetry" id="telemetry"></div>
   <span class="spacer"></span>
@@ -507,6 +509,22 @@ async function addChannel(){
   await post('channels',{url,name,width:1920,height:1080,fps:30,alpha:false});
   refresh();
 }
+
+/* The NDI system name — the "MACHINE" half of every source (MACHINE · source).
+   libndi latches it at startup, so a change needs an engine restart to apply. */
+async function editSystemName(){
+  let cur = {machineName:'', active:''};
+  try{ cur = await (await fetch('settings')).json(); }catch(e){}
+  const name = prompt(
+    'NDI system name — the prefix on every source, e.g. "'+(cur.active||'TOWER')+' (CG-1)".\n'
+    + 'Leave blank to use the host name.', cur.machineName || '');
+  if(name===null) return;
+  await post('settings',{machineName:name});
+  if(confirm('Saved. Restart the engine now to apply it?\n\nAll NDI outputs blip for a few seconds.')){
+    await post('restart');
+  }
+}
+document.getElementById('host').onclick = editSystemName;
 
 setInterval(refresh, 2000); refresh();
 </script>

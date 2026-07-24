@@ -5,6 +5,9 @@
 //
 //   GET  /                      the control panel
 //   GET  /status                full JSON snapshot (system + every channel)
+//   GET  /settings              app-level settings (NDI machine name)
+//   POST /settings              save settings (body: { machineName, restart? })
+//   POST /restart               restart the engine (applies pending settings)
 //   GET  /preview.jpg?id=chN    latest frame of one channel as JPEG
 //   POST /channels              add a channel        (body: channel fields)
 //   POST /channels/:id          patch config + restart (body: channel fields)
@@ -30,10 +33,16 @@ function json(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
-// deps: { app, manager, glMode, machineName, port }
+// deps: { app, manager, settings, glMode, machineName, port }
+// machineName is the NDI name libndi is CURRENTLY advertising (captured at start);
+// a settings change only takes effect after a restart.
 function start(deps) {
-  const { app, manager, glMode, machineName, port } = deps;
+  const { app, manager, settings, glMode, machineName, port } = deps;
   const htmlPath = path.join(__dirname, 'control.html');
+
+  // Restart the process so pending settings apply. Under the container's restart
+  // policy (unless-stopped) it comes straight back; NDI outputs blip briefly.
+  const scheduleRestart = () => setTimeout(() => { manager.stopAll(); app.exit(0); }, 300);
 
   const server = http.createServer(async (req, res) => {
     const [pathname, qs] = req.url.split('?');
@@ -62,6 +71,26 @@ function start(deps) {
         let appMetrics = [];
         try { appMetrics = app.getAppMetrics(); } catch (e) { /* not ready */ }
         json(res, 200, manager.status(appMetrics, glMode, machineName));
+        return;
+      }
+      if (req.method === 'GET' && pathname === '/settings') {
+        const s = settings.load();
+        json(res, 200, { machineName: s.machineName, active: machineName });
+        return;
+      }
+      if (req.method === 'POST' && pathname === '/settings') {
+        const body = await readJsonBody(req);
+        const s = settings.load();
+        s.machineName = settings.sanitizeMachineName(body.machineName);
+        settings.save(s);
+        const pendingRestart = settings.effectiveMachineName(s) !== machineName;
+        json(res, 200, { machineName: s.machineName, active: machineName, pendingRestart });
+        if (body.restart) scheduleRestart();
+        return;
+      }
+      if (req.method === 'POST' && pathname === '/restart') {
+        res.writeHead(200); res.end('restarting');
+        scheduleRestart();
         return;
       }
 

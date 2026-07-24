@@ -14,11 +14,12 @@
 //   metrics.js         CPU / memory / NIC / GPU sampling
 //   control-server.js  the HTTP control panel + REST API
 //   ndi.js             wrapper around the native NDI sender addon
-const os = require('os');
 const { app, ipcMain } = require('electron');
 
 const chromium = require('./chromium');
 const config = require('./config');
+const settings = require('./settings');
+const ndiConfig = require('./ndi-config');
 const metrics = require('./metrics');
 const controlServer = require('./control-server');
 const { ChannelManager } = require('./manager');
@@ -39,13 +40,25 @@ ipcMain.on('webcg:audio', (event, msg) => {
 ipcMain.on('webcg:audiodiag', (event, diag) => manager.routeAudioDiag(event.sender.id, diag));
 
 app.whenReady().then(() => {
+  // Write libndi's config before any sender is created (NDI initialises lazily on
+  // the first sender). The machine name captured here is what NDI actually
+  // advertises until the next restart.
+  const s = settings.load();
+  const activeMachineName = settings.effectiveMachineName(s);
+  ndiConfig.write({
+    discoveryServer: process.env.NDI_DISCOVERY_SERVER || '',
+    group: process.env.NDI_GROUP || 'public',
+    machineName: s.machineName || '', // empty -> libndi uses the hostname
+  });
+
   metrics.start();
   manager.startAll();
   controlServer.start({
     app,
     manager,
+    settings,
     glMode: chromium.GL,
-    machineName: os.hostname().toUpperCase(),
+    machineName: activeMachineName,
     port: CTRL_PORT,
   });
 });

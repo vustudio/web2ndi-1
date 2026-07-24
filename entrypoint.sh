@@ -1,25 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# NDI discovery: mDNS is unreliable inside containers, especially on a host that
-# already runs other NDI apps (they hold the mDNS port). If NDI_DISCOVERY_SERVER
-# is set, write an NDI config so libndi registers with that discovery server
-# (unicast, port 5959) instead of relying on mDNS. Receivers must use the same
-# server. Leave it unset to use plain mDNS (fine when this is the only NDI app).
-if [ -n "${NDI_DISCOVERY_SERVER:-}" ]; then
-  mkdir -p /root/.ndi
-  cat > /root/.ndi/ndi-config.v1.json <<EOF
-{
-  "ndi": {
-    "networks": { "discovery": "${NDI_DISCOVERY_SERVER}" },
-    "groups": { "send": "\"${NDI_GROUP:-public}\"" }
-  }
-}
-EOF
-  echo "[entrypoint] NDI discovery server: ${NDI_DISCOVERY_SERVER}  group: ${NDI_GROUP:-public}"
-else
-  echo "[entrypoint] NDI discovery: mDNS (set NDI_DISCOVERY_SERVER to use a discovery server)"
-fi
+# NDI config (discovery server + machine name) is written by the app at startup
+# from NDI_DISCOVERY_SERVER / NDI_GROUP / the persisted machine-name setting — see
+# src/ndi-config.js. Keeping it in one place lets the control panel change it.
 
 # CG_XVFB=0 runs Electron with no X server (for headless GPU/EGL mode, where a
 # software X server would otherwise pull GL onto the software GLX path). Default
