@@ -1,0 +1,87 @@
+/* Dark theme for Swagger UI — matches the webcg·ndi control panel:
+   graphite surface with a violet cast, cyan as the single accent. */
+:root{
+  --rack-950:#07080D; --rack-900:#0C0E16; --rack-850:#11131D;
+  --rack-800:#161926; --rack-750:#1B1F2D; --edge:#282D3E;
+  --ink:#E9EBF3; --ink-2:#A6ADC2; --ink-3:#6B7288; --act:#4FD8E9; --violet:#8C6BFF;
+}
+body{background:var(--rack-900); margin:0}
+.swagger-ui{color:var(--ink)}
+.swagger-ui .topbar{display:none}
+
+/* header / info block */
+.swagger-ui .info,.swagger-ui .info .title,.swagger-ui .info p,
+.swagger-ui .info li,.swagger-ui .info h1,.swagger-ui .info h2{color:var(--ink)}
+.swagger-ui .info a,.swagger-ui a{color:var(--act)}
+.swagger-ui .info .title small{background:var(--rack-750)}
+.swagger-ui .info .title small pre{color:var(--ink-2)}
+
+/* servers / scheme bar */
+.swagger-ui .scheme-container{background:var(--rack-850); box-shadow:none; border:1px solid var(--edge)}
+.swagger-ui .scheme-container .schemes-title,.swagger-ui label{color:var(--ink-2)}
+
+/* tag groups */
+.swagger-ui .opblock-tag{color:var(--ink); border-bottom:1px solid var(--edge)}
+.swagger-ui .opblock-tag:hover{background:rgba(255,255,255,.02)}
+.swagger-ui .opblock-tag small{color:var(--ink-3)}
+
+/* operation blocks — dark surface, method colour kept as the accent stripe */
+.swagger-ui .opblock{background:var(--rack-800); border:1px solid var(--edge); box-shadow:none}
+.swagger-ui .opblock .opblock-summary{border-color:var(--edge)}
+.swagger-ui .opblock .opblock-summary-path,
+.swagger-ui .opblock .opblock-summary-path__deprecated,
+.swagger-ui .opblock .opblock-summary-description{color:var(--ink)}
+.swagger-ui .opblock.opblock-get{background:var(--rack-800); border-color:var(--edge)}
+.swagger-ui .opblock.opblock-post{background:var(--rack-800); border-color:var(--edge)}
+.swagger-ui .opblock.opblock-get .opblock-summary{border-color:rgba(79,216,233,.28)}
+.swagger-ui .opblock.opblock-post .opblock-summary{border-color:rgba(31,217,123,.28)}
+.swagger-ui .opblock-description-wrapper p,
+.swagger-ui .opblock-external-docs-wrapper p,
+.swagger-ui .opblock-title_normal p,
+.swagger-ui .opblock-title_normal{color:var(--ink-2)}
+.swagger-ui .opblock-section-header{background:var(--rack-850); box-shadow:none}
+.swagger-ui .opblock-section-header h4,
+.swagger-ui .opblock-section-header>label,
+.swagger-ui .tab li{color:var(--ink)}
+
+/* parameters + response tables */
+.swagger-ui table thead tr td,.swagger-ui table thead tr th{color:var(--ink-3); border-color:var(--edge)}
+.swagger-ui .parameters-col_description,
+.swagger-ui .response-col_description,
+.swagger-ui .response-col_status{color:var(--ink)}
+.swagger-ui .parameter__name{color:var(--ink)}
+.swagger-ui .parameter__type{color:var(--ink-2)}
+.swagger-ui .parameter__in,.swagger-ui .prop-format{color:var(--ink-3)}
+.swagger-ui .responses-inner h4,.swagger-ui .responses-inner h5,
+.swagger-ui .response-col_links{color:var(--ink)}
+.swagger-ui .response .response-col_status{color:var(--ink)}
+
+/* inputs / controls */
+.swagger-ui input,.swagger-ui select,.swagger-ui textarea{
+  background:var(--rack-950); color:var(--ink); border:1px solid var(--edge)}
+.swagger-ui .btn{color:var(--ink); border-color:var(--edge); background:var(--rack-750)}
+.swagger-ui .btn:hover{background:#222739}
+.swagger-ui .btn.execute{background:var(--act); color:#05131A; border-color:transparent}
+.swagger-ui .btn.cancel{color:#FF8A94; border-color:#4A2229; background:#241318}
+.swagger-ui .btn.authorize{color:var(--act); border-color:#2A7F8B}
+.swagger-ui .btn.authorize svg{fill:var(--act)}
+
+/* code / examples */
+.swagger-ui .markdown code,.swagger-ui .renderedMarkdown code{background:var(--rack-950); color:var(--act)}
+.swagger-ui .highlight-code>.microlight,
+.swagger-ui .opblock-body pre.microlight{background:var(--rack-950)!important; color:var(--ink)}
+.swagger-ui .microlight code,.swagger-ui .microlight span{color:var(--ink)!important}
+
+/* models */
+.swagger-ui section.models{border:1px solid var(--edge); background:var(--rack-900)}
+.swagger-ui section.models.is-open h4{border-color:var(--edge)}
+.swagger-ui section.models h4{color:var(--ink-2)}
+.swagger-ui section.models .model-container{background:var(--rack-800)}
+.swagger-ui .model,.swagger-ui .model-title,.swagger-ui .model-toggle:after{color:var(--ink)}
+.swagger-ui .prop-type{color:var(--violet)}
+.swagger-ui .prop-name{color:var(--ink)}
+
+/* misc glyphs */
+.swagger-ui svg:not(:root){fill:var(--ink-2)}
+.swagger-ui .expand-methods svg,.swagger-ui .expand-operation svg{fill:var(--ink-3)}
+.swagger-ui .model-toggle:after{background:none}

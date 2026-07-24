@@ -68,17 +68,36 @@ function start(deps) {
         return;
       }
       if (req.method === 'GET' && (pathname === '/docs' || pathname === '/docs/')) {
-        // Swagger UI (loaded from CDN) pointed at our own spec. Same-origin, so
-        // its "Try it out" calls hit this server directly.
+        // Swagger UI, dark-themed, pointed at our own spec. Assets are bundled
+        // (served from /docs-assets/) — no CDN, so it works air-gapped. Same
+        // origin, so "Try it out" hits this server directly.
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>webcg·ndi API</title>
-<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
-<style>body{margin:0}</style></head><body><div id="ui"></div>
-<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-<script>window.ui=SwaggerUIBundle({url:'openapi.yaml',dom_id:'#ui',deepLinking:true});</script>
+<link rel="stylesheet" href="/docs-assets/swagger-ui.css">
+<link rel="stylesheet" href="/docs-assets/dark.css">
+</head><body><div id="ui"></div>
+<script src="/docs-assets/swagger-ui-bundle.js"></script>
+<script>window.ui=SwaggerUIBundle({url:'/openapi.yaml',dom_id:'#ui',deepLinking:true});</script>
 </body></html>`);
+        return;
+      }
+      if (req.method === 'GET' && parts[0] === 'docs-assets' && parts[1]) {
+        // Static Swagger UI assets from the bundled package, plus our dark theme.
+        // Whitelisted filenames only — no path traversal into the package.
+        const ASSETS = {
+          'swagger-ui.css': { type: 'text/css', pkg: 'swagger-ui.css' },
+          'swagger-ui-bundle.js': { type: 'application/javascript', pkg: 'swagger-ui-bundle.js' },
+          'dark.css': { type: 'text/css', local: path.join(__dirname, 'swagger-dark.css') },
+        };
+        const a = ASSETS[parts[1]];
+        if (!a) { res.writeHead(404); res.end('no asset'); return; }
+        try {
+          const file = a.local || path.join(require('swagger-ui-dist').getAbsoluteFSPath(), a.pkg);
+          res.writeHead(200, { 'Content-Type': a.type, 'Cache-Control': 'max-age=86400' });
+          res.end(fs.readFileSync(file));
+        } catch (e) { res.writeHead(404); res.end('asset unavailable'); }
         return;
       }
       if (req.method === 'GET' && pathname === '/openapi.yaml') {
