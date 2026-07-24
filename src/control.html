@@ -169,7 +169,7 @@ function updateCard(c, ch) {
   const bw = (ch.conn > 0)
     ? `${recv} receiver${ch.conn === 1 ? '' : 's'} · ≈${ch.ndiPerStreamMbps} Mbps ea → ${ch.ndiOutMbps} Mbps`
     : `${recv} receivers · 0 Mbps (idle, ≈${ch.ndiPerStreamMbps} Mbps if watched)`;
-  c.querySelector('.sub').innerHTML = ch.width + '×' + ch.height + '@' + ch.fps + '  ·  actual ' + ch.fpsActual + ' fps  ·  ' + (ch.alpha?'alpha':'opaque')
+  c.querySelector('.sub').innerHTML = ch.width + '×' + ch.height + '@' + ch.fps + '  ·  NDI ' + ch.fpsSent + ' fps (paint ' + ch.fpsActual + ')  ·  ' + (ch.alpha?'alpha':'opaque')
     + '<br><span style="color:' + (ch.conn > 0 ? 'var(--accent)' : 'var(--mut)') + '">NDI: ' + bw + '</span>';
   const p = ch.page || {}, ps = c.querySelector('.pstat'), pl = c.querySelector('.plink');
   let origin = p.origin || '';

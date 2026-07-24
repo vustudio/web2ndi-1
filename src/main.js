@@ -213,7 +213,8 @@ pollGpu();
 // ---- per-channel sender + offscreen window --------------------------------
 function startChannel(ch) {
   const rt = RT[ch.id] = { win: null, sender: null, backed: false, headerSent: false,
-    latestJpeg: null, paints: 0, fpsActual: 0, lastJpegAt: 0, tick: null, fpsTick: null, stopping: false };
+    latestJpeg: null, paints: 0, fpsActual: 0, sent: 0, fpsSent: 0, nextDue: 0,
+    lastJpegAt: 0, tick: null, fpsTick: null, stopping: false };
 
   const sender = spawn('python3', [path.join(__dirname, 'sender.py')], {
     env: { ...process.env, CG_FPS: String(ch.fps), NDI_NAME: ch.name, CG_ALPHA: ch.alpha ? '1' : '0' },
@@ -243,23 +244,33 @@ function startChannel(ch) {
   rt.win = win;
   win.webContents.setFrameRate(ch.fps);
   rt.tick = setInterval(() => { if (win && !win.isDestroyed()) win.webContents.invalidate(); }, Math.max(1, Math.round(1000 / ch.fps)));
-  rt.fpsTick = setInterval(() => { rt.fpsActual = rt.paints; rt.paints = 0; }, 1000);
+  rt.fpsTick = setInterval(() => { rt.fpsActual = rt.paints; rt.paints = 0; rt.fpsSent = rt.sent; rt.sent = 0; }, 1000);
 
+  // Frame pacing. Chromium delivers paints in bursts (several within a millisecond,
+  // then a gap), so gating *on paint arrival* transmits one frame per burst and the
+  // rate collapses well below target. Instead: the paint handler only records the
+  // newest frame, and a fixed timer transmits it. That yields exactly the declared
+  // rate, evenly spaced, always sending the freshest available frame.
+  const frameMs = 1000 / ch.fps;
   win.webContents.on('paint', (_e, _d, image) => {
     rt.paints++;
+    rt.lastImage = image;
     const now = Date.now();
     if (now - rt.lastJpegAt > 500) { rt.lastJpegAt = now; try { rt.latestJpeg = image.toJPEG(60); } catch (e) {} }
-    if (rt.backed || !rt.sender || !rt.sender.stdin.writable) return;
-    const bmp = image.getBitmap();
+  });
+  rt.sendTick = setInterval(() => {
+    if (!rt.lastImage || rt.backed || !rt.sender || !rt.sender.stdin.writable) return;
+    let bmp; try { bmp = rt.lastImage.getBitmap(); } catch (e) { return; }
     if (!bmp || bmp.length === 0) return;
     if (!rt.headerSent) {
-      const s = image.getSize();
+      const s = rt.lastImage.getSize();
       const h = Buffer.alloc(8); h.writeUInt32LE(s.width, 0); h.writeUInt32LE(s.height, 4);
       rt.sender.stdin.write(h); rt.headerSent = true;
       console.log(`[${ch.id}] first frame ${s.width}x${s.height}`);
     }
     if (!rt.sender.stdin.write(bmp)) rt.backed = true;
-  });
+    rt.sent++;
+  }, Math.max(1, Math.round(frameMs)));
   // Periodically scrape player status (id / licensed / connected) from the DOM.
   rt.scrapeTick = setInterval(() => {
     if (!win || win.isDestroyed() || win.webContents.isLoading()) return;
@@ -274,6 +285,7 @@ function stopChannel(id) {
   const rt = RT[id]; if (!rt) return; rt.stopping = true;
   if (rt.tick) clearInterval(rt.tick);
   if (rt.fpsTick) clearInterval(rt.fpsTick);
+  if (rt.sendTick) clearInterval(rt.sendTick);
   if (rt.scrapeTick) clearInterval(rt.scrapeTick);
   if (rt.sender) { try { rt.sender.kill('SIGKILL'); } catch (e) {} }
   if (rt.win) { try { rt.win.destroy(); } catch (e) {} }
@@ -329,7 +341,7 @@ function startControlServer() {
           try { const pid = rt.win && !rt.win.isDestroyed() ? rt.win.webContents.getOSProcessId() : 0; const m = metrics[pid]; if (m) { cpu = Math.round(m.cpu.percentCPUUsage); memMB = Math.round((m.memory.workingSetSize || 0) / 1024); } } catch (e) {}
           const per = ndiMbps(c.width, c.height, c.fps);
           const conn = (rt.conn === undefined || rt.conn === null) ? null : rt.conn;
-          return { ...c, fpsActual: rt.fpsActual || 0, connected: !!(rt.sender && rt.win), page: rt.page || null, cpu, memMB,
+          return { ...c, fpsActual: rt.fpsActual || 0, fpsSent: rt.fpsSent || 0, connected: !!(rt.sender && rt.win), page: rt.page || null, cpu, memMB,
                    conn, ndiPerStreamMbps: per, ndiOutMbps: (conn && conn > 0) ? per * conn : 0 };
         });
         res.end(JSON.stringify({
