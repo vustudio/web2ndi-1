@@ -3,7 +3,7 @@
 // Each channel = its own browser (own persistent session partition), rendered to
 // its own NDI output via the in-process native sender. Channels are configured/persisted
 // in /data/channels.json and managed from one HTTP control panel.
-const { app, BrowserWindow, session } = require('electron');
+const { app, BrowserWindow, session, ipcMain } = require('electron');
 const { exec } = require('child_process');
 const http = require('http');
 const os = require('os');
@@ -22,6 +22,9 @@ const NDI_GROUP = process.env.NDI_GROUP || '';
 // source is actually on air. Throttling webContents.setFrameRate() saves the GPU
 // render, the readback, the copy AND the NDI encode - not just the transmit.
 const ADAPTIVE = (process.env.CG_ADAPTIVE || '1') !== '0';
+// Audio tap is OFF by default: the transport works, but tapping this page's media
+// yields silence (see notes), and a silent NDI audio track is worse than none.
+const AUDIO_ENABLED = (process.env.CG_AUDIO || '0') === '1';
 function adaptiveTarget(ch, rt) {
   if (!ADAPTIVE || !rt.ndiId) return ch.fps;
   let st; try { st = ndi.getStats(rt.ndiId); } catch (e) { return ch.fps; }
@@ -154,6 +157,75 @@ const SCRAPE_JS = `(async () => {
   } catch (e) { return { error: String(e) }; }
 })()`;
 
+// Injected into the page's MAIN world (not the preload's isolated world, where
+// WebAudio refuses the page's media elements). Taps both MediaStream-backed
+// (WebRTC) and plain src media, and pushes raw planar Float32 to the bridge.
+const POSTLOAD_JS = `(() => {
+  if (window.__webcgAudioInstalled || !window.__webcg) return 'skip';
+  window.__webcgAudioInstalled = true;
+  const RATE = 48000, FRAMES = 2048, CH = 2;
+  let ctx = null, proc = null;
+  const doneEls = new WeakSet(), doneStreams = new Set();
+  const diag = { mode: null, tracks: 0, ctxState: 'none', elements: 0, error: null };
+  function ensure() {
+    if (ctx) return;
+    ctx = new AudioContext({ sampleRate: RATE, latencyHint: 'playback' });
+    proc = ctx.createScriptProcessor(FRAMES, CH, CH);
+    proc.onaudioprocess = (e) => {
+      const inp = e.inputBuffer, n = inp.length, avail = inp.numberOfChannels;
+      const out = new Float32Array(CH * n);
+      for (let c = 0; c < CH; c++) out.set(inp.getChannelData(Math.min(c, avail - 1)), c * n);
+      window.__webcg.audio(out.buffer, CH, Math.round(inp.sampleRate) || RATE, n);
+    };
+    const g = ctx.createGain(); g.gain.value = 0;   // tap without local playback
+    proc.connect(g); g.connect(ctx.destination);
+  }
+  function attach(el) {
+    try {
+      ensure();
+      const so = el.srcObject;
+      if (so && typeof so.getAudioTracks === 'function') {
+        const tr = so.getAudioTracks(); diag.tracks = tr.length;
+        if (!tr.length) { diag.mode = 'stream-no-audio'; return; }
+        if (doneStreams.has(so.id)) return;
+        ctx.createMediaStreamSource(so).connect(proc);
+        doneStreams.add(so.id); diag.mode = 'mediastream';
+      } else {
+        if (doneEls.has(el)) return;
+        diag.acNative = (typeof AudioContext === 'function') && /\[native code\]/.test(AudioContext.toString());
+      diag.acName = (typeof AudioContext === 'function') && AudioContext.name;
+      diag.elProto = Object.prototype.toString.call(el);
+      const s = ctx.createMediaElementSource(el);
+        s.connect(proc); s.connect(ctx.destination);
+        doneEls.add(el); diag.mode = 'element';
+      }
+      try { if (el.muted) { el.muted = false; el.volume = 1.0; } } catch (e2) {}
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    } catch (e) { diag.error = String((e && e.message) || e); }
+  }
+  function scan() {
+    try {
+      const els = document.querySelectorAll('video,audio');
+      diag.elements = els.length;
+      diag.els = Array.prototype.map.call(els, (e) => ({
+        tag: e.tagName,
+        ctor: e.constructor && e.constructor.name,
+        isMedia: (typeof HTMLMediaElement !== 'undefined') && (e instanceof HTMLMediaElement),
+        sameDoc: e.ownerDocument === document,
+        hasSrcObject: !!e.srcObject,
+        srcKind: e.srcObject ? (e.srcObject.constructor && e.srcObject.constructor.name) : (e.currentSrc ? 'src' : 'none'),
+        muted: e.muted, paused: e.paused,
+      }));
+      els.forEach(attach);
+    } catch (e) { diag.error = 'scan:' + String((e && e.message) || e); }
+    if (ctx) { diag.ctxState = ctx.state; if (ctx.state === 'suspended') ctx.resume().catch(() => {}); }
+    try { window.__webcg.diag(diag); } catch (e) {}
+  }
+  scan(); setInterval(scan, 2000);
+  document.addEventListener('play', (e) => attach(e.target), true);
+  return 'installed';
+})()`;
+
 // ---- container CPU / mem (cgroup) + GPU (nvidia-smi) sampling -------------
 let sysStats = { cpuPercent: 0, cores: os.cpus().length, memMB: 0, gpus: [] };
 function readCpuUsec() {
@@ -249,10 +321,14 @@ function startChannel(ch) {
   const win = new BrowserWindow({
     width: ch.width, height: ch.height, useContentSize: true, show: false, frame: false,
     transparent: ch.alpha, backgroundColor: ch.alpha ? '#00000000' : '#000000',
-    webPreferences: { offscreen: true, backgroundThrottling: false, partition: 'persist:' + ch.id },
+    webPreferences: {
+      offscreen: true, backgroundThrottling: false, partition: 'persist:' + ch.id,
+      preload: path.join(__dirname, 'preload.js'),   // taps page audio -> NDI
+    },
   });
   rt.win = win;
   win.webContents.setAudioMuted(false);
+  rt.wcId = win.webContents.id;
   win.webContents.setFrameRate(ch.fps);
   rt.invalidateFn = () => { if (win && !win.isDestroyed()) win.webContents.invalidate(); };
   rt.tick = setInterval(rt.invalidateFn, Math.max(1, Math.round(1000 / ch.fps)));
@@ -308,6 +384,23 @@ function startChannel(ch) {
     if (!win || win.isDestroyed() || win.webContents.isLoading()) return;
     win.webContents.executeJavaScript(SCRAPE_JS, true).then(r => { rt.page = r; }).catch(() => {});
   }, 3000);
+
+  // Install the audio tap in the page's main world on every load.
+  win.webContents.on('dom-ready', () => {
+    if (!AUDIO_ENABLED) return;   // audio tap is opt-in until the source issue is solved
+    // executeJavaScript runs in the ISOLATED world, where DOM nodes are wrappers
+    // (Object.prototype.toString says [object EventTarget]) and WebAudio rejects
+    // them. Injecting a <script> element makes the code run in the page's real
+    // main world, where the media elements are genuine.
+    const inject = `(() => { try {
+      const s = document.createElement('script');
+      s.textContent = ${JSON.stringify(POSTLOAD_JS)};
+      (document.head || document.documentElement).appendChild(s);
+      s.remove(); return 'injected';
+    } catch (e) { return 'inject-failed: ' + e.message } })()`;
+    win.webContents.executeJavaScript(inject, true)
+      .then(r => console.log(`[${ch.id}] audio tap ${r}`)).catch(() => {});
+  });
 
   win.webContents.on('render-process-gone', (_e, d) => { console.error(`[${ch.id}] render gone: ${d.reason}`); if (win && !win.isDestroyed()) win.reload(); });
   win.webContents.on('did-fail-load', (_e, code, desc) => { console.error(`[${ch.id}] load failed ${code} ${desc}`); setTimeout(() => { if (win && !win.isDestroyed()) win.loadURL(ch.url); }, 2000); });
@@ -374,12 +467,12 @@ function startControlServer() {
           let cpu = null, memMB = null;
           try { const pid = rt.win && !rt.win.isDestroyed() ? rt.win.webContents.getOSProcessId() : 0; const m = metrics[pid]; if (m) { cpu = Math.round(m.cpu.percentCPUUsage); memMB = Math.round((m.memory.workingSetSize || 0) / 1024); } } catch (e) {}
           const per = ndiMbps(c.width, c.height, c.fps);
-          let conn = null, tally = null;
+          let conn = null, tally = null, audioSent = 0;
           if (rt.ndiId) {
-            try { const st = ndi.getStats(rt.ndiId); conn = st.connections; tally = { program: !!st.onProgram, preview: !!st.onPreview }; } catch (e) {}
+            try { const st = ndi.getStats(rt.ndiId); conn = st.connections; audioSent = st.audioSent || 0; tally = { program: !!st.onProgram, preview: !!st.onPreview }; } catch (e) {}
           }
           return { ...c, fpsActual: rt.fpsActual || 0, fpsSent: rt.fpsSent || 0, targetFps: rt.targetFps || c.fps,
-                   connected: !!(rt.ndiId && rt.win), tally, page: rt.page || null, cpu, memMB,
+                   connected: !!(rt.ndiId && rt.win), tally, audioSent, audioDiag: rt.audioDiag || null, page: rt.page || null, cpu, memMB,
                    conn, ndiPerStreamMbps: per, ndiOutMbps: (conn && conn > 0) ? per * conn : 0 };
         });
         res.end(JSON.stringify({
@@ -444,6 +537,27 @@ function startControlServer() {
     } catch (e) { res.writeHead(500); res.end(String(e)); }
   }).listen(CTRL_PORT, () => console.log(`[webcg] control panel on :${CTRL_PORT} (${channels.length} channel(s))`));
 }
+
+// Page audio (from preload.js) -> the channel's NDI sender.
+ipcMain.on('webcg:audio', (event, msg) => {
+  try {
+    const wcId = event.sender.id;
+    for (const id of Object.keys(RT)) {
+      const rt = RT[id];
+      if (rt.wcId === wcId && rt.ndiId && msg && msg.pcm) {
+        const buf = Buffer.isBuffer(msg.pcm) ? msg.pcm : Buffer.from(msg.pcm);
+        ndi.sendAudio(rt.ndiId, buf, msg.channels | 0, msg.sampleRate | 0, msg.samples | 0);
+        rt.audioChunks = (rt.audioChunks || 0) + 1;
+        return;
+      }
+    }
+  } catch (e) { /* ignore malformed audio frames */ }
+});
+
+ipcMain.on('webcg:audiodiag', (event, d) => {
+  const wcId = event.sender.id;
+  for (const id of Object.keys(RT)) if (RT[id].wcId === wcId) { RT[id].audioDiag = d; return; }
+});
 
 app.whenReady().then(() => {
   channels = loadChannels(); saveChannels();

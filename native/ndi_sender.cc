@@ -23,16 +23,27 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <cstring>
 #include <vector>
 
 namespace {
 
 using BufRef = Napi::Reference<Napi::Buffer<uint8_t>>;
 
+// Audio arrives as planar float (WebAudio's native layout, and NDI's FLTP), and
+// is tiny (48kHz stereo ~= 384 KB/s), so we copy it into the queue rather than
+// juggling JS references. All libndi calls stay on the single worker thread.
+struct AudioChunk {
+  std::vector<float> data;   // planar: ch0 samples, then ch1 samples, ...
+  int channels = 2, sampleRate = 48000, samples = 0;
+};
+
 struct Sender {
   NDIlib_send_instance_t inst = nullptr;
   int width = 0, height = 0, fpsN = 30, fpsD = 1, stride = 0;
   NDIlib_FourCC_video_type_e fourcc = NDIlib_FourCC_video_type_BGRX;
+  std::vector<AudioChunk> audioQ;
+  std::atomic<uint64_t> audioSent{0};
 
   std::thread worker;
   std::mutex m;
@@ -63,14 +74,35 @@ void workerLoop(Sender* s) {
   for (;;) {
     const uint8_t* data = nullptr;
     BufRef ref;
+    std::vector<AudioChunk> audio;
     {
       std::unique_lock<std::mutex> lk(s->m);
-      s->cv.wait(lk, [&] { return s->stop || s->hasPending; });
+      s->cv.wait(lk, [&] { return s->stop || s->hasPending || !s->audioQ.empty(); });
       if (s->stop) break;
-      data = s->pending;
-      ref = std::move(s->pendingRef);
-      s->hasPending = false;
+      audio.swap(s->audioQ);
+      if (s->hasPending) {
+        data = s->pending;
+        ref = std::move(s->pendingRef);
+        s->hasPending = false;
+      }
     }
+
+    // Audio first: it is cheap and must not wait behind a paced video send.
+    for (auto& a : audio) {
+      NDIlib_audio_frame_v3_t af;
+      af.sample_rate = a.sampleRate;
+      af.no_channels = a.channels;
+      af.no_samples = a.samples;
+      af.timecode = NDIlib_send_timecode_synthesize;
+      af.FourCC = NDIlib_FourCC_audio_type_FLTP;
+      af.p_data = reinterpret_cast<uint8_t*>(a.data.data());
+      af.channel_stride_in_bytes = a.samples * static_cast<int>(sizeof(float));
+      af.p_metadata = nullptr;
+      af.timestamp = 0;
+      NDIlib_send_send_audio_v3(s->inst, &af);
+      s->audioSent++;
+    }
+
     if (!data) continue;
 
     NDIlib_video_frame_v2_t f;
@@ -189,12 +221,40 @@ Napi::Value SendFrame(const Napi::CallbackInfo& info) {
   return Napi::Boolean::New(env, true);
 }
 
+// sendAudio(id, float32Buffer, channels, sampleRate, samplesPerChannel)
+// Buffer must be planar: all of ch0's samples, then ch1's, ...
+Napi::Value SendAudio(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  Sender* s = lookup(info[0].As<Napi::Number>().Int32Value());
+  if (!s) return Napi::Boolean::New(env, false);
+  Napi::Buffer<uint8_t> buf = info[1].As<Napi::Buffer<uint8_t>>();
+  int channels = info[2].As<Napi::Number>().Int32Value();
+  int rate = info[3].As<Napi::Number>().Int32Value();
+  int samples = info[4].As<Napi::Number>().Int32Value();
+  if (channels <= 0 || samples <= 0) return Napi::Boolean::New(env, false);
+  size_t need = static_cast<size_t>(channels) * samples * sizeof(float);
+  if (buf.Length() < need) return Napi::Boolean::New(env, false);
+
+  AudioChunk a;
+  a.channels = channels; a.sampleRate = rate; a.samples = samples;
+  a.data.resize(static_cast<size_t>(channels) * samples);
+  std::memcpy(a.data.data(), buf.Data(), need);
+  {
+    std::lock_guard<std::mutex> lk(s->m);
+    if (s->audioQ.size() > 32) s->audioQ.erase(s->audioQ.begin());  // bound the queue
+    s->audioQ.push_back(std::move(a));
+  }
+  s->cv.notify_one();
+  return Napi::Boolean::New(env, true);
+}
+
 Napi::Value GetStats(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   Sender* s = lookup(info[0].As<Napi::Number>().Int32Value());
   Napi::Object out = Napi::Object::New(env);
   if (!s) return out;
   out.Set("sent", Napi::Number::New(env, static_cast<double>(s->sent.load())));
+  out.Set("audioSent", Napi::Number::New(env, static_cast<double>(s->audioSent.load())));
   out.Set("dropped", Napi::Number::New(env, static_cast<double>(s->dropped.load())));
   out.Set("connections", Napi::Number::New(env, NDIlib_send_get_no_connections(s->inst, 0)));
   NDIlib_tally_t t;
@@ -231,6 +291,7 @@ Napi::Value DestroySender(const Napi::CallbackInfo& info) {
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("createSender", Napi::Function::New(env, CreateSender));
   exports.Set("sendFrame", Napi::Function::New(env, SendFrame));
+  exports.Set("sendAudio", Napi::Function::New(env, SendAudio));
   exports.Set("getStats", Napi::Function::New(env, GetStats));
   exports.Set("destroySender", Napi::Function::New(env, DestroySender));
   return exports;
