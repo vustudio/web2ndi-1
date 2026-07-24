@@ -13,8 +13,10 @@
    from the Terminal Grid landing page (its named hues declared once below).
    ========================================================================== */
 :root{
-  /* aurora hues — declared once, referenced by the backdrop rules (no inline literals) */
-  --aura-blue: var(--tg-accent-rgb);   /* 55,148,255 — matches the accent */
+  /* aurora hues — declared once here (not inlined at point-of-use); the violet
+     and mint are the Terminal Grid landing-page backdrop hues, the blue reuses
+     the accent token. */
+  --aura-blue: var(--tg-accent-rgb);
   --aura-violet: 139, 92, 246;
   --aura-mint: 16, 185, 129;
 }
@@ -88,7 +90,8 @@ tg-header{display:block}
   color:var(--tg-fg); opacity:.85; background:var(--tg-surface-3); border:1px solid var(--tg-border-4);
   border-radius:var(--tg-radius-sm); padding:2px 7px}
 .ch-name{font-size:16px; font-weight:700; letter-spacing:-.2px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-/* player-state badge — reuses the .stab chip colour language via tokens */
+/* player-state badge — a non-interactive status pill (no TG status-badge
+   component exists); shares .stab's chip recipe but adds semantic signal colours */
 .badge{font-family:var(--tg-font-mono); font-size:9px; font-weight:700; letter-spacing:.6px; text-transform:uppercase;
   padding:3px 8px; border-radius:var(--tg-radius); border:1px solid var(--tg-border-4);
   background:var(--tg-surface-2); color:var(--tg-fg); opacity:.6}
@@ -127,6 +130,13 @@ tg-header{display:block}
 tg-button{display:block}
 .acts tg-button{flex:1 1 auto}
 
+/* Keyboard focus: the library sets outline:none on .glass-btn/.glass-select with
+   no :focus-visible replacement, so restore a token-coloured ring at page level. */
+.glass-btn:focus-visible, .glass-select:focus-visible,
+.stab:focus-visible, .pid:focus-visible{
+  outline:2px solid var(--tg-focus); outline-offset:1px; border-radius:var(--tg-radius-sm);
+}
+
 @media (max-width:520px){ .row>*{flex-basis:100%} body{padding:16px 12px 60px} }
 @media (prefers-reduced-motion:reduce){ *,*::before,*::after{animation:none!important; transition-duration:1ms!important} }
 </style>
@@ -155,9 +165,11 @@ async function refresh(){
     const s = await (await fetch('status')).json();
     const hdr = document.querySelector('tg-header');
     if (hdr){
+      // Update the subtitle text node in place. Never setAttribute('subtitle') —
+      // that re-renders tg-header and wipes the nav links (and their listeners),
+      // since by then the <a>s live inside .tg-header-nav, not as direct children.
       const sub = hdr.querySelector('.tg-header-subtitle');
-      const txt = `${s.machineName} · ${s.gl} · ${s.channels.length} channel${s.channels.length===1?'':'s'}`;
-      if (sub) sub.textContent = txt; else hdr.setAttribute('subtitle', txt);
+      if (sub) sub.textContent = `${s.machineName} · ${s.gl} · ${s.channels.length} channel${s.channels.length===1?'':'s'}`;
     }
     renderTelemetry(s.system || {});
     cache = s.channels;
@@ -283,42 +295,49 @@ function updateCard(el, ch){
   el.querySelector('.ch-name').textContent = ch.name;
 
   const badge = el.querySelector('.badge'), ident = el.querySelector('.ident');
-  let origin = p.origin||''; if(!origin){ try{ origin = new URL(ch.url).origin; }catch(e){} }
+  let origin = safeOrigin(p.origin||''); if(!origin){ try{ origin = safeOrigin(new URL(ch.url).origin); }catch(e){} }
   const st = p.state;
-  if(st==='blocked'){
-    badge.dataset.s='blocked'; badge.textContent='Blocked';
-    const bid=(p.blocked&&p.blocked.id)||p.playerId||'';
-    ident.innerHTML=(bid?`<span class="pid">${bid}</span>`:'')
-      +`<span class="warn">ID in use in another browser</span>`
-      +`<button class="stab" data-c="retry connection">Retry</button>`
-      +`<button class="stab" data-c="start as unlicensed">Start unlicensed</button>`;
-  } else if(st==='licensed' && p.playerId){
-    badge.dataset.s='licensed'; badge.textContent='Licensed';
-    const url=origin+'/library?id='+encodeURIComponent(p.playerId);
-    ident.innerHTML=(p.playerName?`<span class="ch-tag">${p.playerName}</span>`:'')
-      +`<span class="pid" title="click to copy">${p.playerId}</span>`
-      +`<a class="stab" href="${url}" target="_blank" rel="noreferrer">Open library</a>`
-      +`<button class="stab" data-copy="${url}">Copy link</button>`;
-  } else if(st==='unlicensed' && p.playerId){
-    badge.dataset.s='unlicensed'; badge.textContent='Unlicensed';
-    const url=origin+'/player-admin/setup/'+encodeURIComponent(p.playerId);
-    ident.innerHTML=`<span class="pid" title="click to copy">${p.playerId}</span>`
-      +`<a class="stab" href="${url}" target="_blank" rel="noreferrer">Register player</a>`
-      +`<button class="stab" data-copy="${url}">Copy link</button>`;
-  } else if(st==='connecting'){
-    badge.dataset.s=''; badge.textContent='Connecting';
-    ident.innerHTML=`<span class="warn" style="opacity:.5">Waiting for the player to connect</span>`;
-  } else { badge.dataset.s=''; badge.textContent='—'; ident.innerHTML=''; }
+  const bid = (p.blocked&&p.blocked.id)||p.playerId||'';
 
-  const pid = ident.querySelector('.pid');
-  if(pid) pid.onclick=()=>copyText(pid.textContent,pid);
-  ident.querySelectorAll('[data-copy]').forEach(b=>{ b.onclick=()=>copyText(b.dataset.copy,b,'Copy link'); });
-  ident.querySelectorAll('[data-c]').forEach(b=>{ b.onclick=async()=>{
-    const o=b.textContent; b.textContent='…';
-    const r=await fetch('channels/'+ch.id+'/click',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:b.dataset.c})});
-    let j={}; try{ j=await r.json(); }catch(e){}
-    b.textContent=j.clicked?'Sent':'Not found'; setTimeout(()=>b.textContent=o,1400);
-  };});
+  // Rebuild the identity/action row only when its state signature changes, so a
+  // 2s poll doesn't clobber in-flight chip feedback ('…'→'Sent', 'Copied').
+  const sig = [st, p.playerId||'', p.playerName||'', origin, bid].join('|');
+  if(el._identSig !== sig){
+    el._identSig = sig;
+    if(st==='blocked'){
+      badge.dataset.s='blocked'; badge.textContent='Blocked';
+      ident.innerHTML=(bid?`<span class="pid">${esc(bid)}</span>`:'')
+        +`<span class="warn">ID in use in another browser</span>`
+        +`<button class="stab" data-c="retry connection">Retry</button>`
+        +`<button class="stab" data-c="start as unlicensed">Start unlicensed</button>`;
+    } else if(st==='licensed' && p.playerId){
+      badge.dataset.s='licensed'; badge.textContent='Licensed';
+      const url=origin+'/library?id='+encodeURIComponent(p.playerId);
+      ident.innerHTML=(p.playerName?`<span class="ch-tag">${esc(p.playerName)}</span>`:'')
+        +`<span class="pid" title="click to copy">${esc(p.playerId)}</span>`
+        +(origin?`<a class="stab" href="${esc(url)}" target="_blank" rel="noreferrer">Open library</a>`:'')
+        +(origin?`<button class="stab" data-copy="${esc(url)}">Copy link</button>`:'');
+    } else if(st==='unlicensed' && p.playerId){
+      badge.dataset.s='unlicensed'; badge.textContent='Unlicensed';
+      const url=origin+'/player-admin/setup/'+encodeURIComponent(p.playerId);
+      ident.innerHTML=`<span class="pid" title="click to copy">${esc(p.playerId)}</span>`
+        +(origin?`<a class="stab" href="${esc(url)}" target="_blank" rel="noreferrer">Register player</a>`:'')
+        +(origin?`<button class="stab" data-copy="${esc(url)}">Copy link</button>`:'');
+    } else if(st==='connecting'){
+      badge.dataset.s=''; badge.textContent='Connecting';
+      ident.innerHTML=`<span class="warn" style="opacity:.5">Waiting for the player to connect</span>`;
+    } else { badge.dataset.s=''; badge.textContent='—'; ident.innerHTML=''; }
+
+    const pid = ident.querySelector('.pid');
+    if(pid) pid.onclick=()=>copyText(pid.textContent,pid);
+    ident.querySelectorAll('[data-copy]').forEach(b=>{ b.onclick=()=>copyText(b.dataset.copy,b,'Copy link'); });
+    ident.querySelectorAll('[data-c]').forEach(b=>{ b.onclick=async()=>{
+      const o=b.textContent; b.textContent='…';
+      const r=await fetch('channels/'+ch.id+'/click',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:b.dataset.c})});
+      let j={}; try{ j=await r.json(); }catch(e){}
+      b.textContent=j.clicked?'Sent':'Not found'; setTimeout(()=>b.textContent=o,1400);
+    };});
+  }
 
   const throttled = ch.targetFps && ch.targetFps < ch.fps;
   const bw = ch.conn>0
@@ -344,6 +363,11 @@ function updateCard(el, ch){
 }
 
 /* ── helpers ── */
+// The rendered page is operator-controlled and untrusted, so every page-derived
+// string interpolated into innerHTML is escaped, and link origins are validated
+// to be http(s) before use in an href.
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function safeOrigin(o){ return /^https?:\/\//i.test(o||'') ? o : ''; }
 async function post(path, body){
   const r = await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
   return r.ok;
